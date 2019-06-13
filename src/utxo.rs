@@ -196,9 +196,8 @@ impl<'a> From<&'a bitcoin::TxIn> for UTXOID {
         UTXOID {
             txid: {
                 let mut buf = [0u8; 32];
-                buf.clone_from_slice(std::borrow::Borrow::<[u8]>::borrow(
-                    &txin.previous_output.txid,
-                ));
+                buf.clone_from_slice(&txin.previous_output.txid[..]);
+                buf.reverse();
                 buf
             },
             vout: txin.previous_output.vout,

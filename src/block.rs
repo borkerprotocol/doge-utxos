@@ -39,7 +39,8 @@ impl<'a> Block<'a> {
         for tx in self {
             let tx = tx?;
             let mut txid = [0u8; 32];
-            txid.clone_from_slice(std::borrow::Borrow::<[u8]>::borrow(&tx.txid()));
+            txid.clone_from_slice(&tx.txid()[..]);
+            txid.reverse();
             for i in tx.input {
                 UTXOID::from(&i).rem(db, idx, rewind)?;
             }
@@ -59,8 +60,8 @@ impl<'a> Block<'a> {
         for tx in self {
             let tx = tx?;
             let mut txid = [0u8; 32];
-            txid.clone_from_slice(std::borrow::Borrow::<[u8]>::borrow(&tx.txid()));
-
+            txid.clone_from_slice(&tx.txid()[..]);
+            txid.reverse();
             for (i, _) in tx.output.into_iter().enumerate() {
                 UTXOID {
                     txid: txid.clone(),

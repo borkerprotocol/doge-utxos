@@ -36,7 +36,6 @@ impl<'a> Block<'a> {
 
     pub fn exec(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
-        println!("scanning {} txs", self.tx_count);
         for tx in self {
             let tx = tx?;
             let mut txid = [0u8; 32];

@@ -120,7 +120,7 @@ fn handle_rewind(
     idx: u32,
     rewind: &mut Rewind,
 ) -> Result<(), Error> {
-    if idx <= 2 {
+    if idx <= 1 {
         return Ok(());
     }
 

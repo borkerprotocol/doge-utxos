@@ -82,6 +82,7 @@ impl<'a> Iterator for Block<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < self.tx_count {
             let tx: Self::Item = parse_tx(&mut self.cur);
+            pos += 1;
             Some(tx)
         } else {
             None

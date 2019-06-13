@@ -124,13 +124,14 @@ fn handle_rewind(
         return Ok(());
     }
 
-    let mut hash = hash.clone();
+    let mut cow = std::borrow::Cow::Borrowed(hash);
+    let hash = cow.to_mut();
     hash.reverse();
     let mut block_key = Vec::with_capacity(5);
     block_key.push(3_u8);
     block_key.extend(&idx.to_ne_bytes());
     let old_hash = ldb_try!(db.get(&block_key)).ok_or(format_err!("missing block_hash"))?;
-    if old_hash == hash {
+    if old_hash.as_slice() == AsRef::<[u8]>::as_ref(hash) {
         return Ok(());
     }
     let block_raw = match client.getblock(hex::encode(old_hash), false)? {
@@ -139,7 +140,7 @@ fn handle_rewind(
     };
     let block = Block::from_slice(&block_raw)?;
     block.undo(db, idx, rewind)?;
-    let block_raw = match client.getblock(hex::encode(hash), false)? {
+    let block_raw = match client.getblock(hex::encode(&hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),
     };

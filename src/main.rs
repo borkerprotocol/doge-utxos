@@ -93,6 +93,7 @@ fn try_process_block(
         Ok(a) => a,
         _ => return Ok(None),
     };
+    println!("bhash_str: {}", bhash_str);
     let bhash = hex::decode(&bhash_str)?;
     ldb_try!(db.put(&bkey, &bhash));
     let block_raw = match client.getblock(bhash_str, false)? {

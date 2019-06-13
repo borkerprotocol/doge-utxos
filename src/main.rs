@@ -40,7 +40,7 @@ fn main() -> Result<(), Error> {
     let db = Arc::new(Mutex::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
-    std::thread::spawn(move || loop {
+    let t = std::thread::spawn(move || loop {
         let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
             .map_err(Error::from)
             .and_then(|f| serde_cbor::from_reader(f).map_err(Error::from))
@@ -63,6 +63,8 @@ fn main() -> Result<(), Error> {
             Err(e) => eprintln!("ERROR: {}", e),
         };
     });
+
+    t.join().unwrap();
 
     Ok(())
 }

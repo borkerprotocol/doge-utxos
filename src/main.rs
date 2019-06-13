@@ -93,7 +93,6 @@ fn try_process_block(
         Ok(a) => a,
         _ => return Ok(None),
     };
-    println!("bhash_str: {}", bhash_str);
     let bhash = hex::decode(&bhash_str)?;
     ldb_try!(db.put(&bkey, &bhash));
     let block_raw = match client.getblock(bhash_str, false)? {
@@ -125,6 +124,8 @@ fn handle_rewind(
         return Ok(());
     }
 
+    let mut hash = hash.clone();
+    hash.reverse();
     let mut block_key = Vec::with_capacity(5);
     block_key.push(3_u8);
     block_key.extend(&idx.to_ne_bytes());
@@ -132,8 +133,6 @@ fn handle_rewind(
     if old_hash == hash {
         return Ok(());
     }
-    println!("old_hash: {}", hex::encode(&old_hash));
-    println!("hash: {}", hex::encode(&hash));
     let block_raw = match client.getblock(hex::encode(old_hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),

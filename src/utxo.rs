@@ -175,7 +175,7 @@ impl UTXOID {
         let mut replacement_addr_key = Vec::with_capacity(26);
         replacement_addr_key.extend(&addr_key[0..22]);
         replacement_addr_key.extend(&replacement_idx.to_ne_bytes());
-        if &replacement_idx::to_ne_bytes() != &addr_key[22..] {
+        if &replacement_idx.to_ne_bytes() != &addr_key[22..] {
             let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key))
                 .ok_or(format_err!("missing replacement addr data"))?;
             let kv: (UTXOID, UTXOData) = UTXO::from_kv(

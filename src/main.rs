@@ -120,7 +120,7 @@ fn handle_rewind(
     idx: u32,
     rewind: &mut Rewind,
 ) -> Result<(), Error> {
-    if idx <= 1 {
+    if idx <= 2 {
         return Ok(());
     }
 
@@ -131,6 +131,7 @@ fn handle_rewind(
     if old_hash == hash {
         return Ok(());
     }
+    println!("old_hash: {}", hex::encode(&old_hash));
     let block_raw = match client.getblock(hex::encode(old_hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),

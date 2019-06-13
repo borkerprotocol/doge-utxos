@@ -132,6 +132,7 @@ fn handle_rewind(
         return Ok(());
     }
     println!("old_hash: {}", hex::encode(&old_hash));
+    println!("hash: {}", hex::encode(&hash));
     let block_raw = match client.getblock(hex::encode(old_hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),

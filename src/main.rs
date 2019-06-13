@@ -101,11 +101,10 @@ fn try_process_block(
         _ => bail!("unexpected response"),
     };
     let block = Block::from_slice(&block_raw)?;
-    println!("prev_blockhash: {:x}", block.header.prev_blockhash);
     handle_rewind(
         client,
         db,
-        std::borrow::Borrow::<[u8]>::borrow(&block.header.prev_blockhash),
+        &block.header.prev_blockhash[..],
         idx - 1,
         rewind,
     )?;

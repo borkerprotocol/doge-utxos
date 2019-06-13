@@ -29,7 +29,7 @@ impl<'a> Block<'a> {
         Ok(Block {
             header,
             tx_count: tx_count.0,
-            pos: 0,
+            pos: 1,
             cur,
         })
     }

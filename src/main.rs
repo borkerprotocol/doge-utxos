@@ -60,7 +60,7 @@ fn main() -> Result<(), Error> {
                     Err(e) => eprintln!("ERROR SAVING REWIND: {}", e),
                 }
             }
-            Err(e) => eprintln!("ERROR: {}", e),
+            Err(e) => eprintln!("ERROR: {}{}", e, e.backtrace()),
         };
     });
 
@@ -108,6 +108,7 @@ fn try_process_block(
         rewind,
     )?;
     block.exec(db, idx, rewind)?;
+    ldb_try!(db.put(&[0_u8], &(idx + 1).to_ne_bytes()));
 
     Ok(Some(idx))
 }

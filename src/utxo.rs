@@ -178,17 +178,15 @@ impl UTXOID {
         if &replacement_idx.to_ne_bytes() != &addr_key[22..] {
             let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key))
                 .ok_or(format_err!("missing replacement addr data"))?;
-            let kv: (UTXOID, UTXOData) = UTXO::from_kv(
+            let update_index = UTXO::from_kv(&replacement_addr_key, &replacement_addr_value)?;
+            let mut replacement_utxoid_key = Vec::with_capacity(37);
+            replacement_utxoid_key.push(2_u8);
+            replacement_utxoid_key.extend(&update_index.0.txid);
+            replacement_utxoid_key.extend(&update_index.0.vout.to_ne_bytes());
+            ldb_try!(db.put(&replacement_utxoid_key, &addr_key));
+            let kv = UTXO::from_kv(
                 &addr_key,
-                &ldb_try!(db.get(&addr_key))
-                    .ok_or(format_err!("missing key to delete"))
-                    .map_err(|e| {
-                        println!(
-                            "{}",
-                            bitcoin::util::base58::check_encode_slice(&addr_key[1..22])
-                        );
-                        e
-                    })?,
+                &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
             )?;
             rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, kv.1);
             ldb_try!(db.put(&addr_key, &replacement_addr_value));

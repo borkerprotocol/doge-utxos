@@ -180,7 +180,15 @@ impl UTXOID {
                 .ok_or(format_err!("missing replacement addr data"))?;
             let kv: (UTXOID, UTXOData) = UTXO::from_kv(
                 &addr_key,
-                &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
+                &ldb_try!(db.get(&addr_key))
+                    .ok_or(format_err!("missing key to delete"))
+                    .map_err(|e| {
+                        println!(
+                            "{}",
+                            bitcoin::util::base58::check_encode_slice(&addr_key[1..22])
+                        );
+                        e
+                    })?,
             )?;
             rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, kv.1);
             ldb_try!(db.put(&addr_key, &replacement_addr_value));

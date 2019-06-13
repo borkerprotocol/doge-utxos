@@ -94,9 +94,13 @@ fn parse_tx<'a>(cur: &mut std::io::Cursor<&'a [u8]>) -> Result<bitcoin::Transact
 
     let version = cur.read_u32()?;
     let vin_count: bitcoin::VarInt = Decodable::consensus_decode(cur)?;
-    let vins: Vec<bitcoin::TxIn> = (0..vin_count.0).map(|_| Decodable::consensus_decode(cur)).collect::<Result<Vec<_>, _>>()?;
+    let vins: Vec<bitcoin::TxIn> = (0..vin_count.0)
+        .map(|_| Decodable::consensus_decode(cur))
+        .collect::<Result<Vec<_>, _>>()?;
     let vout_count: bitcoin::VarInt = Decodable::consensus_decode(cur)?;
-    let vouts: Vec<bitcoin::TxOut> = (0..vin_count.0).map(|_| Decodable::consensus_decode(cur)).collect::<Result<Vec<_>, _>>()?;
+    let vouts: Vec<bitcoin::TxOut> = (0..vout_count.0)
+        .map(|_| Decodable::consensus_decode(cur))
+        .collect::<Result<Vec<_>, _>>()?;
     let lock_time = cur.read_u32()?;
 
     Ok(bitcoin::Transaction {
@@ -105,4 +109,4 @@ fn parse_tx<'a>(cur: &mut std::io::Cursor<&'a [u8]>) -> Result<bitcoin::Transact
         output: vouts,
         lock_time,
     })
-} 
+}

@@ -81,10 +81,28 @@ impl<'a> Iterator for Block<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < self.tx_count {
-            let tx: Self::Item = Decodable::consensus_decode(&mut self.cur).map_err(Error::from);
+            let tx: Self::Item = parse_tx(&mut self.cur);
             Some(tx)
         } else {
             None
         }
     }
 }
+
+fn parse_tx<'a>(cur: &mut std::io::Cursor<&'a [u8]>) -> Result<bitcoin::Transaction, Error> {
+    use bitcoin::consensus::Decoder;
+
+    let version = cur.read_u32()?;
+    let vin_count: bitcoin::VarInt = Decodable::consensus_decode(cur)?;
+    let vins: Vec<bitcoin::TxIn> = (0..vin_count.0).map(|_| Decodable::consensus_decode(cur)).collect::<Result<Vec<_>, _>>()?;
+    let vout_count: bitcoin::VarInt = Decodable::consensus_decode(cur)?;
+    let vouts: Vec<bitcoin::TxOut> = (0..vin_count.0).map(|_| Decodable::consensus_decode(cur)).collect::<Result<Vec<_>, _>>()?;
+    let lock_time = cur.read_u32()?;
+
+    Ok(bitcoin::Transaction {
+        version,
+        input: vins,
+        output: vouts,
+        lock_time,
+    })
+} 

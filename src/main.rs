@@ -101,6 +101,7 @@ fn try_process_block(
         _ => bail!("unexpected response"),
     };
     let block = Block::from_slice(&block_raw)?;
+    println!("prev_blockhash: {:x}", block.header.prev_blockhash);
     handle_rewind(
         client,
         db,

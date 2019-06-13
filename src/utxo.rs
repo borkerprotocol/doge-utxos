@@ -187,6 +187,7 @@ impl UTXOID {
         }
         ldb_try!(db.delete(&replacement_addr_key));
         ldb_try!(db.delete(&utxoid_key));
+        ldb_try!(db.put(&addr_key[0..22], &replacement_idx.to_ne_bytes()));
 
         Ok(())
     }

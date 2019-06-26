@@ -9,11 +9,16 @@ macro_rules! ldb_try {
     };
 }
 
+mod api;
 mod block;
 mod utxo;
 
 use crate::block::Block;
 use failure::Error;
+use hyper::rt::Future;
+use hyper::rt::Stream;
+use hyper::service::service_fn;
+use hyper::{Body, Request, Response, Server};
 use leveldb_rs::DB;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -63,6 +68,67 @@ fn main() -> Result<(), Error> {
             Err(e) => eprintln!("ERROR: {}{}", e, e.backtrace()),
         };
     });
+
+    let addr_http = ([0, 0, 0, 0], 11021).into();
+    // let addr_https = ([0, 0, 0, 0], 11022).into();
+
+    let make_service = || {
+        let client = hyper::Client::new();
+        let rpc = hyper::Uri::builder()
+            .scheme("http")
+            .authority("localhost:22555")
+            .build()
+            .unwrap();
+        let db = db.clone();
+        service_fn(
+            move |mut req: Request<Body>| match req.uri().path_and_query() {
+                Some(p_and_q) if p_and_q.path() == "/" => {
+                    *req.uri_mut() = rpc.clone();
+                    futures::future::Either::B(client.request(req).map_err(Error::from))
+                }
+                None => {
+                    *req.uri_mut() = rpc.clone();
+                    futures::future::Either::B(client.request(req).map_err(Error::from))
+                    // TODO: don't duplicate
+                }
+                Some(path_and_query) => {
+                    futures::future::Either::A(match req.headers().get("Content-Type") {
+                        Some(a) if a.as_bytes().starts_with(b"application/json") => {
+                            futures::future::result(
+                                api::handle_request(&db.lock().unwrap(), path_and_query)
+                                    .and_then(|res| Ok(Response::new(Body::from(res.to_json()?)))),
+                            )
+                        }
+                        Some(a) if a.as_bytes().starts_with(b"application/cbor") => {
+                            futures::future::result(api::handle_request(&db.lock().unwrap(), path_and_query).and_then(
+                                |res| Ok(Response::new(Body::from(serde_cbor::to_vec(&res)?))),
+                            ))
+                        }
+                        Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => {
+                            futures::future::result(api::handle_request(&db.lock().unwrap(), path_and_query).and_then(
+                                |res| Ok(Response::new(Body::from(serde_yaml::to_string(&res)?))),
+                            ))
+                        }
+                        Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => {
+                            futures::future::result(
+                                api::handle_request(&db.lock().unwrap(), path_and_query)
+                                    .and_then(|res| Ok(Response::new(Body::from(res.to_bytes())))),
+                            )
+                        }
+                        _ => futures::future::err(format_err!("Invalid content type!")),
+                    })
+                }
+            },
+
+        )
+    };
+
+    let server_http = Server::bind(&addr_http).serve(make_service);
+    // let server_https = Server::bind(&addr_https).serve(make_service);
+
+    hyper::rt::run(server_http.map_err(|e| {
+        eprintln!("server error: {}", e);
+    }));
 
     t.join().unwrap();
 

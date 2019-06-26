@@ -21,6 +21,7 @@ use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use leveldb_rs::DB;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use throttled_bitcoin_rpc::BitcoinRpcClient;
@@ -38,13 +39,27 @@ struct Config {
     node_password: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct RpcMethod {
+    method: String,
+}
+
 fn main() -> Result<(), Error> {
     let conf: Config = serde_yaml::from_reader(std::fs::File::open("config.yaml")?)?;
-    let client = BitcoinRpcClient::new(conf.node_uri, conf.node_user, conf.node_password, 0, 0, 0);
+    let client_arc = BitcoinRpcClient::new(
+        conf.node_uri.clone(),
+        conf.node_user.clone(),
+        conf.node_password.clone(),
+        0,
+        0,
+        0,
+    );
     let path = std::path::Path::new("utxos.db");
-    let db = Arc::new(Mutex::new(ldb_try!(
+    let db_arc = Arc::new(Mutex::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
+    let db = db_arc.clone();
+    let client = client_arc.clone();
     let t = std::thread::spawn(move || loop {
         let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
             .map_err(Error::from)
@@ -72,47 +87,113 @@ fn main() -> Result<(), Error> {
     let addr_http = ([0, 0, 0, 0], 11021).into();
     // let addr_https = ([0, 0, 0, 0], 11022).into();
 
-    let make_service = || {
+    let db = db_arc.clone();
+    let rpc_client = client_arc.clone();
+    let rpc_arc = Arc::new(hyper::Uri::from_str(&conf.node_uri)?);
+    let make_service = move || {
         let client = hyper::Client::new();
-        let rpc = hyper::Uri::builder()
-            .scheme("http")
-            .authority("localhost:22555")
-            .build()
-            .unwrap();
+        let rpc = (&*rpc_arc).clone();
         let db = db.clone();
+        let rpc_client = rpc_client.clone();
         service_fn(
             move |mut req: Request<Body>| match req.uri().path_and_query() {
                 Some(p_and_q) if p_and_q.path() == "/" => {
-                    *req.uri_mut() = rpc.clone();
-                    futures::future::Either::B(client.request(req).map_err(Error::from))
+                    let client = client.clone();
+                    let mut r = Request::builder();
+                    r.uri(rpc.clone());
+                    r.method(req.method());
+                    r.headers_mut().map(|h| *h = req.headers().clone());
+                    let bstream = req.into_body();
+                    let body = bstream.concat2().wait().map_err(Error::from);
+                    let m_b: Result<(RpcMethod, _), _> = body.and_then(|b| {
+                        serde_json::from_slice(&b)
+                            .map(|m| (m, b))
+                            .map_err(Error::from)
+                    });
+                    let b = m_b.and_then(|(m, b)| {
+                        if m.method == "stop" {
+                            bail!("unauthorized method")
+                        } else {
+                            Ok(b)
+                        }
+                    });
+                    let req = b.and_then(|b| r.body(Body::from(b)).map_err(Error::from));
+                    futures::future::Either::B(futures::future::Either::A(
+                        futures::future::result(req)
+                            .and_then(move |r| client.request(r).map_err(Error::from)),
+                    ))
                 }
                 None => {
-                    *req.uri_mut() = rpc.clone();
-                    futures::future::Either::B(client.request(req).map_err(Error::from))
+                    let client = client.clone();
+                    let mut r = Request::builder();
+                    r.uri(rpc.clone());
+                    r.method(req.method());
+                    r.headers_mut().map(|h| *h = req.headers().clone());
+                    let bstream = req.into_body();
+                    let body = bstream.concat2().wait().map_err(Error::from);
+                    let m_b: Result<(RpcMethod, _), _> = body.and_then(|b| {
+                        serde_json::from_slice(&b)
+                            .map(|m| (m, b))
+                            .map_err(Error::from)
+                    });
+                    let b = m_b.and_then(|(m, b)| {
+                        if m.method == "stop" {
+                            bail!("unauthorized method")
+                        } else {
+                            Ok(b)
+                        }
+                    });
+                    let req = b.and_then(|b| r.body(Body::from(b)).map_err(Error::from));
+                    futures::future::Either::B(futures::future::Either::B(
+                        futures::future::result(req)
+                            .and_then(move |r| client.request(r).map_err(Error::from)),
+                    ))
                     // TODO: don't duplicate
                 }
                 Some(path_and_query) => {
                     futures::future::Either::A(match req.headers().get("Content-Type") {
                         Some(a) if a.as_bytes().starts_with(b"application/json") => {
                             futures::future::result(
-                                api::handle_request(&db.lock().unwrap(), path_and_query)
-                                    .and_then(|res| Ok(Response::new(Body::from(res.to_json()?)))),
+                                api::handle_request(
+                                    &db.lock().unwrap(),
+                                    &rpc_client,
+                                    path_and_query,
+                                )
+                                .and_then(|res| Ok(Response::new(Body::from(res.to_json()?)))),
                             )
                         }
                         Some(a) if a.as_bytes().starts_with(b"application/cbor") => {
-                            futures::future::result(api::handle_request(&db.lock().unwrap(), path_and_query).and_then(
-                                |res| Ok(Response::new(Body::from(serde_cbor::to_vec(&res)?))),
-                            ))
+                            futures::future::result(
+                                api::handle_request(
+                                    &db.lock().unwrap(),
+                                    &rpc_client,
+                                    path_and_query,
+                                )
+                                .and_then(|res| {
+                                    Ok(Response::new(Body::from(serde_cbor::to_vec(&res)?)))
+                                }),
+                            )
                         }
                         Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => {
-                            futures::future::result(api::handle_request(&db.lock().unwrap(), path_and_query).and_then(
-                                |res| Ok(Response::new(Body::from(serde_yaml::to_string(&res)?))),
-                            ))
+                            futures::future::result(
+                                api::handle_request(
+                                    &db.lock().unwrap(),
+                                    &rpc_client,
+                                    path_and_query,
+                                )
+                                .and_then(|res| {
+                                    Ok(Response::new(Body::from(serde_yaml::to_string(&res)?)))
+                                }),
+                            )
                         }
                         Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => {
                             futures::future::result(
-                                api::handle_request(&db.lock().unwrap(), path_and_query)
-                                    .and_then(|res| Ok(Response::new(Body::from(res.to_bytes())))),
+                                api::handle_request(
+                                    &db.lock().unwrap(),
+                                    &rpc_client,
+                                    path_and_query,
+                                )
+                                .and_then(|res| Ok(Response::new(Body::from(res.to_bytes())))),
                             )
                         }
                         _ => futures::future::err(format_err!("Invalid content type!")),

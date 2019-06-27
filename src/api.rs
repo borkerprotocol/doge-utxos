@@ -1,13 +1,20 @@
 use failure::Error;
+use futures::future::*;
+use futures::Future;
+use futures::Stream;
+use hyper::{Body, Client, Request};
 use std::collections::HashMap;
 
 pub fn handle_request(
     db: &leveldb_rs::DB,
-    client: &throttled_bitcoin_rpc::BitcoinRpcClient,
+    rpc: &hyper::http::Uri,
+    client: &Client<hyper::client::HttpConnector>,
+    uname: Option<&String>,
+    pwd: Option<&String>,
     path_and_query: &http::uri::PathAndQuery,
-) -> Result<UTXORes, Error> {
+) -> impl Future<Item = UTXORes, Error = Error> {
     match path_and_query.path() {
-        "/balance" => {
+        "/balance" => Either::A(result((|| {
             let url = url::Url::parse(&format!("http://localhost/{}", path_and_query.as_str()))?;
             let qparams = url
                 .query_pairs()
@@ -16,31 +23,40 @@ pub fn handle_request(
                 .get(&std::borrow::Cow::Borrowed("address"))
                 .ok_or(format_err!("missing address"))?;
             Ok(UTXORes::Balance(get_balance(db, &address)?))
-        }
-        "/utxos" => {
-            let url = url::Url::parse(&format!("http://localhost/{}", path_and_query.as_str()))?;
-            let qparams = url
-                .query_pairs()
-                .collect::<HashMap<std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>>>();
-            let address = qparams
-                .get(&std::borrow::Cow::Borrowed("address"))
-                .ok_or(format_err!("missing address"))?;
-            let amount = qparams
-                .get(&std::borrow::Cow::Borrowed("amount"))
-                .ok_or(format_err!("missing amount"))?;
-            let batch_size = match qparams.get(&std::borrow::Cow::Borrowed("batchSize")) {
-                Some(a) => Some(str::parse(&a)?),
-                None => None,
-            };
-            Ok(UTXORes::UTXOs(get_utxos(
-                db,
-                client,
-                address,
-                str::parse(&amount)?,
-                batch_size,
-            )?))
-        }
-        _ => bail!("unsupported endpoint"),
+        })())),
+        "/utxos" => Either::B(
+            result(
+                (|| {
+                    let url =
+                        url::Url::parse(&format!("http://localhost/{}", path_and_query.as_str()))?;
+                    let qparams = url
+                        .query_pairs()
+                        .collect::<HashMap<std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>>>();
+                    let address = qparams
+                        .get(&std::borrow::Cow::Borrowed("address"))
+                        .ok_or(format_err!("missing address"))?
+                        .to_string();
+                    let amount = qparams
+                        .get(&std::borrow::Cow::Borrowed("amount"))
+                        .ok_or(format_err!("missing amount"))?;
+                    let amount = str::parse(&amount)?;
+                    let min_count = match qparams.get(&std::borrow::Cow::Borrowed("minCount")) {
+                        Some(a) => Some(str::parse(&a)?),
+                        None => None,
+                    };
+                    Ok((address, amount, min_count))
+                })()
+                .map(|(address, amount, min_count)| {
+                    result(get_utxos(
+                        db, rpc, client, uname, pwd, &address, amount, min_count,
+                    ))
+                    .and_then(join_all)
+                    .map(|a| UTXORes::UTXOs(a))
+                }),
+            )
+            .and_then(|a| a),
+        ),
+        _ => Either::A(err(format_err!("unsupported endpoint"))),
     }
 }
 
@@ -74,11 +90,14 @@ fn get_balance(db: &leveldb_rs::DB, address: &str) -> Result<u64, Error> {
 
 fn get_utxos(
     db: &leveldb_rs::DB,
-    client: &throttled_bitcoin_rpc::BitcoinRpcClient,
+    rpc: &hyper::http::Uri,
+    client: &Client<hyper::client::HttpConnector>,
+    uname: Option<&String>,
+    pwd: Option<&String>,
     address: &str,
     amount: u64,
     min_count: Option<usize>,
-) -> Result<Vec<UTXOData>, Error> {
+) -> Result<Vec<impl Future<Item = UTXOData, Error = Error>>, Error> {
     let min_count = min_count.unwrap_or(20);
     let mut address_vec = bitcoin::util::base58::from_check(address)?;
     if address_vec.len() != 21 {
@@ -109,18 +128,71 @@ fn get_utxos(
         val_buf.clone_from_slice(addr_value.get(36..44).ok_or(format_err!("value missing"))?);
         let value = u64::from_ne_bytes(val_buf);
         bal += value;
-        let raw = hex::decode(client.getrawtransaction(hex::encode(&txid), 0)?.Zero()?)?;
-        utxos.push(UTXOData {
-            txid,
-            vout,
-            value,
-            raw,
-        });
+        utxos.push(add_raw(
+            client,
+            rpc,
+            uname,
+            pwd,
+            UTXODataNoRaw { txid, vout, value },
+        )?);
         if i as usize >= min_count && bal >= amount {
             break;
         }
     }
     Ok(utxos)
+}
+
+fn add_raw(
+    client: &Client<hyper::client::HttpConnector>,
+    rpc: &hyper::http::Uri,
+    uname: Option<&String>,
+    pwd: Option<&String>,
+    data: UTXODataNoRaw,
+) -> Result<impl Future<Item = UTXOData, Error = Error>, Error> {
+    let mut req = Request::builder();
+    req.uri(rpc.clone());
+    match uname {
+        Some(u) => {
+            req.header(
+                "Authorization",
+                base64::encode(&format!("{}:{}", u, pwd.unwrap_or(&"".to_owned()))),
+            );
+        }
+        _ => (),
+    };
+    let req = req.body(Body::from(serde_json::to_string(&RawTxReq {
+        method: "getrawtransaction",
+        params: (hex::encode(&data.txid), 0),
+    })?))?;
+    Ok(client
+        .request(req)
+        .and_then(|res| res.into_body().concat2())
+        .map_err(Error::from)
+        .and_then(|res| result(serde_json::from_slice(&res).map_err(Error::from)))
+        .and_then(|res: RawTxRes| result(hex::decode(res.result).map_err(Error::from)))
+        .map(move |raw| UTXOData {
+            txid: data.txid,
+            vout: data.vout,
+            value: data.value,
+            raw,
+        }))
+}
+
+#[derive(Serialize)]
+pub struct RawTxReq {
+    method: &'static str,
+    params: (String, usize),
+}
+
+#[derive(Deserialize)]
+pub struct RawTxRes {
+    result: String,
+}
+
+pub struct UTXODataNoRaw {
+    txid: [u8; 32],
+    vout: u32,
+    value: u64,
 }
 
 #[derive(Serialize)]

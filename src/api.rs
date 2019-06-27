@@ -169,7 +169,13 @@ fn add_raw(
         .and_then(|res| res.into_body().concat2())
         .map_err(Error::from)
         .and_then(|res| result(serde_json::from_slice(&res).map_err(Error::from)))
-        .and_then(|res: RawTxRes| result(hex::decode(res.result).map_err(Error::from)))
+        .and_then(|res: RawTxRes| {
+            result(
+                res.result
+                    .ok_or(format_err!("{:?}", res.error))
+                    .and_then(|raw| hex::decode(raw).map_err(Error::from)),
+            )
+        })
         .map(move |raw| UTXOData {
             txid: data.txid,
             vout: data.vout,
@@ -186,7 +192,8 @@ pub struct RawTxReq {
 
 #[derive(Deserialize)]
 pub struct RawTxRes {
-    result: String,
+    result: Option<String>,
+    error: Option<serde_json::Value>,
 }
 
 pub struct UTXODataNoRaw {

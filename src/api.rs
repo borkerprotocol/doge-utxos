@@ -168,7 +168,9 @@ fn add_raw(
         .request(req)
         .and_then(|res| res.into_body().concat2())
         .map_err(Error::from)
-        .and_then(|res| result(serde_json::from_slice(&res).map_err(Error::from)))
+        .and_then(|res| {
+            result(serde_json::from_slice(&res).map_err(|_| format_err!("failed to parse {}", std::str::from_utf8(&res).unwrap())))
+        })
         .and_then(|res: RawTxRes| {
             result(
                 res.result

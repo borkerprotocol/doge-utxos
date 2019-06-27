@@ -156,7 +156,7 @@ fn add_raw(
             req.header(
                 "Authorization",
                 format!(
-                    "basic {}",
+                    "Basic {}",
                     base64::encode(&format!("{}:{}", u, pwd.unwrap_or(&"".to_owned())))
                 ),
             );

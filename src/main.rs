@@ -108,7 +108,7 @@ fn main() -> Result<(), Error> {
                             r.header(
                                 "Authorization",
                                 format!(
-                                    "basic {}",
+                                    "Basic {}",
                                     base64::encode(&format!(
                                         "{}:{}",
                                         u,

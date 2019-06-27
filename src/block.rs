@@ -54,8 +54,14 @@ impl<'a> Block<'a> {
             }
             vin_dur += inst.elapsed();
             let inst = std::time::Instant::now();
+            let mut tx_key = Vec::with_capacity(37);
+            tx_key.push(5_u8);
+            tx_key.extend(&txid);
+            ldb_try!(db.put(&tx_key, &(tx.output.len() as u32).to_ne_bytes()));
+            tx_key[0] = 4;
+            ldb_try!(db.put(&tx_key, &tx_vec));
             for (i, o) in tx.output.into_iter().enumerate() {
-                UTXO::from_txout(&txid, &o, i as u32).add(db, &tx_vec)?;
+                UTXO::from_txout(&txid, &o, i as u32).add(db, None)?;
             }
             vout_dur += inst.elapsed();
         }
@@ -67,7 +73,9 @@ impl<'a> Block<'a> {
 
     pub fn undo(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         for (id, (data, raw)) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
-            UTXO::from((id, data.clone())).add(db, raw)?;
+            let tx: bitcoin::Transaction =
+                Decodable::consensus_decode(&mut std::io::Cursor::new(&raw))?;
+            UTXO::from((id, data.clone())).add(db, Some((&raw, tx.output.len() as u32)))?;
         }
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
         for tx in self {

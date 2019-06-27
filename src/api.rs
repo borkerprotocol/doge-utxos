@@ -8,7 +8,7 @@ pub fn handle_request(
 ) -> Result<UTXORes, Error> {
     match path_and_query.path() {
         "/balance" => {
-            let url = url::Url::parse(path_and_query.as_str())?;
+            let url = url::Url::parse(&format!("http://localhost/{}", path_and_query.as_str()))?;
             let qparams = url
                 .query_pairs()
                 .collect::<HashMap<std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>>>();
@@ -18,7 +18,7 @@ pub fn handle_request(
             Ok(UTXORes::Balance(get_balance(db, &address)?))
         }
         "/utxos" => {
-            let url = url::Url::parse(path_and_query.as_str())?;
+            let url = url::Url::parse(&format!("http://localhost/{}", path_and_query.as_str()))?;
             let qparams = url
                 .query_pairs()
                 .collect::<HashMap<std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>>>();

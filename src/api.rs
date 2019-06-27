@@ -51,7 +51,10 @@ pub fn handle_request(
                         db, rpc, client, uname, pwd, &address, amount, min_count,
                     ))
                     .and_then(join_all)
-                    .map(|a| UTXORes::UTXOs(a))
+                    .map(|a| {
+                        println!("{:?}", a);
+                        UTXORes::UTXOs(a)
+                    })
                 }),
             )
             .and_then(|a| a),
@@ -185,15 +188,11 @@ fn add_raw(
                     .and_then(|raw| hex::decode(raw).map_err(Error::from)),
             )
         })
-        .map(move |raw| {
-            let d = UTXOData {
-                txid: data.txid,
-                vout: data.vout,
-                value: data.value,
-                raw,
-            };
-            println!("{:?}", d);
-            d
+        .map(move |raw| UTXOData {
+            txid: data.txid,
+            vout: data.vout,
+            value: data.value,
+            raw,
         }))
 }
 

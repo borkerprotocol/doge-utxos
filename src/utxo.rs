@@ -48,6 +48,10 @@ impl<'a> From<UTXO<'a>> for (UTXOID, UTXOData) {
 
 impl<'a> UTXO<'a> {
     pub fn add(self, db: &mut DB, raw: &[u8]) -> Result<(), Error> {
+        let mut utxoid_key = Vec::with_capacity(37);
+        utxoid_key.push(4_u8);
+        utxoid_key.extend(self.txid);
+        ldb_try!(db.put(&utxoid_key, raw));
         if let Some(address) = self.address {
             let mut addr_key = Vec::with_capacity(26);
             addr_key.push(1_u8);

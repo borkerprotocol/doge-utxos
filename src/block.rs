@@ -45,7 +45,9 @@ impl<'a> Block<'a> {
             let mut tx_vec = Vec::new();
             tx.consensus_encode(&mut tx_vec)?;
             for i in tx.input {
-                UTXOID::from(&i).rem(db, idx, rewind)?;
+                if !i.previous_output.is_null() {
+                    UTXOID::from(&i).rem(db, idx, rewind)?;
+                }
             }
             for (i, o) in tx.output.into_iter().enumerate() {
                 UTXO::from_txout(&txid, &o, i as u32).add(db, &tx_vec)?;

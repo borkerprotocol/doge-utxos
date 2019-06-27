@@ -107,11 +107,14 @@ fn main() -> Result<(), Error> {
                         Some(ref u) => {
                             r.header(
                                 "Authorization",
-                                base64::encode(&format!(
-                                    "{}:{}",
-                                    u,
-                                    pwd.as_ref().unwrap_or(&"".to_owned())
-                                )),
+                                format!(
+                                    "basic {}",
+                                    base64::encode(&format!(
+                                        "{}:{}",
+                                        u,
+                                        pwd.as_ref().unwrap_or(&"".to_owned())
+                                    ))
+                                ),
                             );
                         }
                         _ => (),

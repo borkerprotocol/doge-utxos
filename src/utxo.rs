@@ -64,6 +64,18 @@ impl<'a> UTXO<'a> {
             utxoid_key.push(4_u8);
             utxoid_key.extend(self.txid);
             ldb_try!(db.put(&utxoid_key, raw));
+            utxoid_key[0] = 5;
+            ldb_try!(db.put(
+                &utxoid_key,
+                &ldb_try!(db.get(&utxoid_key))
+                    .map(|c| {
+                        let mut buf = [0_u8; 4];
+                        buf.copy_from_slice(&c);
+                        u32::from_ne_bytes(buf) + 1
+                    })
+                    .unwrap_or(0)
+                    .to_ne_bytes()
+            ));
             utxoid_key[0] = 2;
             utxoid_key.extend(&self.vout.to_ne_bytes());
             ldb_try!(db.put(&utxoid_key, &addr_key));
@@ -159,27 +171,22 @@ impl<'a> UTXO<'a> {
 impl UTXOID {
     pub fn rem(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         let mut utxoid_key = Vec::with_capacity(37);
-        utxoid_key.push(4_u8);
+        utxoid_key.push(5_u8);
         utxoid_key.extend(&self.txid);
-        let raw = ldb_try!(db.get(&utxoid_key)).ok_or(format_err!("missing raw"))?;
-        let tx: bitcoin::Transaction =
-            bitcoin::consensus::Decodable::consensus_decode(&mut std::io::Cursor::new(&raw))?;
-        let unspents = (0..(tx.output.len() as u32))
-            .map(|i: u32| {
-                let mut key = Vec::with_capacity(37);
-                key.push(2_u8);
-                key.extend(&self.txid);
-                key.extend(&i.to_ne_bytes());
-                let utxo_val = ldb_try!(db.get(&key));
-                Ok(utxo_val.map(|_| ()))
+        let unspents = ldb_try!(db.get(&utxoid_key))
+            .map(|c| {
+                let mut buf = [0_u8; 4];
+                buf.copy_from_slice(&c);
+                u32::from_ne_bytes(buf)
             })
-            .map(|a| a.transpose())
-            .filter_map(|a| a)
-            .collect::<Result<Vec<()>, Error>>()?
-            .len();
+            .unwrap_or(0)
+            - 1;
+        ldb_try!(db.put(&utxoid_key, &unspents.to_ne_bytes()));
         if unspents == 0 {
             ldb_try!(db.delete(&utxoid_key));
         }
+        utxoid_key[0] = 4;
+        let raw = ldb_try!(db.get(&utxoid_key)).ok_or(format_err!("missing raw"))?;
         utxoid_key[0] = 2;
         utxoid_key.extend(&self.vout.to_ne_bytes());
         let addr_key = match ldb_try!(db.get(&utxoid_key)) {

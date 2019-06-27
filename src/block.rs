@@ -45,7 +45,7 @@ impl<'a> Block<'a> {
             let mut tx_vec = Vec::new();
             tx.consensus_encode(&mut tx_vec)?;
             for i in tx.input {
-                if !i.previous_outpoint.is_null() {
+                if !i.previous_output.is_null() {
                     UTXOID::from(&i).rem(db, idx, rewind)?;
                 }
             }

@@ -202,7 +202,7 @@ fn main() -> Result<(), Error> {
                 }),
             }
             .or_else(|e| {
-                eprintln!("{}", e);
+                eprintln!("{}\n{}", e, e.backtrace());
                 result(Response::builder().status(500).body(Body::from(format!(
                     "{}{}",
                     e,

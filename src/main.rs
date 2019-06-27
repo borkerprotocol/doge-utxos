@@ -237,11 +237,11 @@ fn main() -> Result<(), Error> {
                 }),
             }
             .or_else(|e| {
-                result(
-                    Response::builder()
-                        .status(500)
-                        .body(Body::from(format!("{}", e))),
-                )
+                result(Response::builder().status(500).body(Body::from(format!(
+                    "{}{}",
+                    e,
+                    e.backtrace()
+                ))))
             })
         })
     };

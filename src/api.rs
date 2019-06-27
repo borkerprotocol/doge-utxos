@@ -185,11 +185,15 @@ fn add_raw(
                     .and_then(|raw| hex::decode(raw).map_err(Error::from)),
             )
         })
-        .map(move |raw| UTXOData {
-            txid: data.txid,
-            vout: data.vout,
-            value: data.value,
-            raw,
+        .map(move |raw| {
+            let d = UTXOData {
+                txid: data.txid,
+                vout: data.vout,
+                value: data.value,
+                raw,
+            };
+            println!("{:?}", d);
+            d
         }))
 }
 
@@ -211,7 +215,7 @@ pub struct UTXODataNoRaw {
     value: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct UTXOData {
     txid: [u8; 32],
     vout: u32,

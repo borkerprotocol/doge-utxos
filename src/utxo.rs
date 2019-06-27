@@ -185,10 +185,10 @@ impl UTXOID {
             })
             .unwrap_or(0)
             - 1;
-        ldb_try!(db.put(&utxoid_key, &unspents.to_ne_bytes()));
         if unspents == 0 {
             ldb_try!(db.delete(&utxoid_key));
         }
+        ldb_try!(db.put(&utxoid_key, &unspents.to_ne_bytes()));
         utxoid_key[0] = 4;
         let raw = ldb_try!(db.get(&utxoid_key)).ok_or(format_err!("missing raw"))?;
         utxoid_key[0] = 2;

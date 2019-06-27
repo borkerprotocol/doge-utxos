@@ -37,6 +37,8 @@ impl<'a> Block<'a> {
     pub fn exec(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         use bitcoin::consensus::encode::Encodable;
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
+        let mut vin_dur = std::time::Duration::new(0, 0);
+        let mut vout_dur = std::time::Duration::new(0, 0);
         for tx in self {
             let tx = tx?;
             let mut txid = [0u8; 32];
@@ -44,15 +46,21 @@ impl<'a> Block<'a> {
             txid.reverse();
             let mut tx_vec = Vec::new();
             tx.consensus_encode(&mut tx_vec)?;
+            let inst = std::time::Instant::now();
             for i in tx.input {
                 if !i.previous_output.is_null() {
                     UTXOID::from(&i).rem(db, idx, rewind)?;
                 }
             }
+            vin_dur += inst.elapsed();
+            let inst = std::time::Instant::now();
             for (i, o) in tx.output.into_iter().enumerate() {
                 UTXO::from_txout(&txid, &o, i as u32).add(db, &tx_vec)?;
             }
+            vout_dur += inst.elapsed();
         }
+        println!("Vin Time: {:?}", vin_dur);
+        println!("Vout Time: {:?}", vout_dur);
 
         Ok(())
     }

@@ -91,18 +91,25 @@ fn main() -> Result<(), Error> {
     let rpc_client = client_arc.clone();
     let rpc_arc = Arc::new(hyper::Uri::from_str(&conf.node_uri)?);
     let make_service = move || {
+        let (uname, pwd) = (conf.node_user.clone(), conf.node_password.clone());
         let client = hyper::Client::new();
         let rpc = (&*rpc_arc).clone();
         let db = db.clone();
         let rpc_client = rpc_client.clone();
         service_fn(
-            move |mut req: Request<Body>| match req.uri().path_and_query() {
+            move |req: Request<Body>| match req.uri().path_and_query() {
                 Some(p_and_q) if p_and_q.path() == "/" => {
                     let client = client.clone();
                     let mut r = Request::builder();
                     r.uri(rpc.clone());
                     r.method(req.method());
                     r.headers_mut().map(|h| *h = req.headers().clone());
+                    match uname {
+                        Some(ref u) => {
+                            r.header("Authorization", format!("{}:{}", u, pwd.as_ref().unwrap_or(&"".to_owned())));
+                        },
+                        _ => (),
+                    }
                     let bstream = req.into_body();
                     let body = bstream.concat2().wait().map_err(Error::from);
                     let m_b: Result<(RpcMethod, _), _> = body.and_then(|b| {

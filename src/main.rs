@@ -178,52 +178,31 @@ fn main() -> Result<(), Error> {
                     // TODO: Don't duplicate
                 }
                 Some(path_and_query) => Either::A(match req.headers().get("Content-Type") {
-                    Some(a) if a.as_bytes().starts_with(b"application/json") => {
-                        result(
-                            api::handle_request(
-                                &db.lock().unwrap(),
-                                path_and_query,
-                            )
+                    Some(a) if a.as_bytes().starts_with(b"application/json") => result(
+                        api::handle_request(&db.lock().unwrap(), path_and_query)
                             .and_then(|res| res.to_json())
                             .map(|res| Response::new(Body::from(res))),
-                        )
-                    }
-                    Some(a) if a.as_bytes().starts_with(b"application/cbor") => {
-                        result(
-                            api::handle_request(
-                                &db.lock().unwrap(),
-                                path_and_query,
-                            )
+                    ),
+                    Some(a) if a.as_bytes().starts_with(b"application/cbor") => result(
+                        api::handle_request(&db.lock().unwrap(), path_and_query)
                             .and_then(|res| serde_cbor::to_vec(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
-                        )
-                    }
-                    Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => {
-                        result(
-                            api::handle_request(
-                                &db.lock().unwrap(),
-                                path_and_query,
-                            )
-                            .and_then(|res| {
-                                serde_yaml::to_string(&res).map_err(Error::from)
-                            })
+                    ),
+                    Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => result(
+                        api::handle_request(&db.lock().unwrap(), path_and_query)
+                            .and_then(|res| serde_yaml::to_string(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
-                        )
-                    }
-                    Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => {
-                        result(
-                            api::handle_request(
-                                &db.lock().unwrap(),
-                                path_and_query,
-                            )
+                    ),
+                    Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => result(
+                        api::handle_request(&db.lock().unwrap(), path_and_query)
                             .map(|res| res.to_bytes())
                             .map(|res| Response::new(Body::from(res))),
-                        )
-                    }
+                    ),
                     _ => err(format_err!("invalid content type")),
                 }),
             }
             .or_else(|e| {
+                eprintln!("{}", e);
                 result(Response::builder().status(500).body(Body::from(format!(
                     "{}{}",
                     e,

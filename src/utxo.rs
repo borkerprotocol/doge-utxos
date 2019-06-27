@@ -14,12 +14,14 @@ pub struct UTXO<'a> {
     txid: &'a [u8; 32],
     vout: u32,
     value: u64,
+    raw: Vec<u8>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct UTXOData {
     address: Option<[u8; 21]>,
     value: u64,
+    raw: Vec<u8>,
 }
 impl<'a> From<(&'a UTXOID, UTXOData)> for UTXO<'a> {
     fn from((id, data): (&'a UTXOID, UTXOData)) -> Self {
@@ -28,6 +30,7 @@ impl<'a> From<(&'a UTXOID, UTXOData)> for UTXO<'a> {
             txid: &id.txid,
             vout: id.vout,
             value: data.value,
+            raw: data.raw,
         }
     }
 }
@@ -41,6 +44,7 @@ impl<'a> From<UTXO<'a>> for (UTXOID, UTXOData) {
             UTXOData {
                 address: utxo.address,
                 value: utxo.value,
+                raw: utxo.raw,
             },
         )
     }
@@ -75,7 +79,7 @@ impl<'a> UTXO<'a> {
         Ok(())
     }
 
-    pub fn from_txout(txid: &'a [u8; 32], out: &'a bitcoin::TxOut, vout: u32) -> Self {
+    pub fn from_txout(txid: &'a [u8; 32], out: &'a bitcoin::TxOut, vout: u32, raw: Vec<u8>) -> Self {
         UTXO {
             txid,
             vout,
@@ -113,6 +117,7 @@ impl<'a> UTXO<'a> {
                     None
                 }
             },
+            raw,
         }
     }
 
@@ -141,6 +146,7 @@ impl<'a> UTXO<'a> {
                 .get(36..44)
                 .ok_or(format_err!("unexpected end of input"))?,
         );
+        let raw = addr_value.get(44..).ok_or(format_err!("unexpected end of input"))?.to_vec();
         Ok((
             UTXOID {
                 txid,
@@ -149,6 +155,7 @@ impl<'a> UTXO<'a> {
             UTXOData {
                 address: Some(address),
                 value: u64::from_ne_bytes(value),
+                raw,
             },
         ))
     }

@@ -171,6 +171,9 @@ fn main() -> Result<(), Error> {
                                         println!("{}", r);
                                         r
                                     })?)))
+                                }).map_err(|e| {
+                                    eprintln!("{}", e);
+                                    e
                                 }),
                         )
                     }

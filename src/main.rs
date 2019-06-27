@@ -165,7 +165,12 @@ fn main() -> Result<(), Error> {
                     Some(a) if a.as_bytes().starts_with(b"application/json") => {
                         futures::future::result(
                             api::handle_request(&db.lock().unwrap(), &rpc_client, path_and_query)
-                                .and_then(|res| Ok(Response::new(Body::from(res.to_json()?)))),
+                                .and_then(|res| {
+                                    Ok(Response::new(Body::from(res.to_json().map(|r| {
+                                        println!("{}", r);
+                                        r
+                                    })?)))
+                                }),
                         )
                     }
                     Some(a) if a.as_bytes().starts_with(b"application/cbor") => {

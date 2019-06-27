@@ -102,10 +102,10 @@ fn get_utxos(
         let mut val_buf = [0_u8; 8];
         val_buf.clone_from_slice(addr_value.get(36..44).ok_or(format_err!("value missing"))?);
         let value = u64::from_ne_bytes(val_buf);
-        let raw = addr_value
-            .get(44..)
-            .ok_or(format_err!("raw missing"))?
-            .to_vec();
+        let mut tx_key = Vec::with_capacity(33);
+        tx_key.push(4_u8);
+        tx_key.extend(&txid);
+        let raw = ldb_try!(db.get(&tx_key)).ok_or(format_err!("raw missing"))?;
         bal += value;
         utxos.push(UTXOData {
             txid,

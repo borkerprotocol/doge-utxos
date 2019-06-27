@@ -35,20 +35,20 @@ impl<'a> Block<'a> {
     }
 
     pub fn exec(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
-                use bitcoin::consensus::encode::Encodable;
+        use bitcoin::consensus::encode::Encodable;
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
         for tx in self {
             let tx = tx?;
             let mut txid = [0u8; 32];
             txid.clone_from_slice(&tx.txid()[..]);
             txid.reverse();
-                let mut tx_vec = Vec::new();
-                tx.consensus_encode(&mut tx_vec)?;
+            let mut tx_vec = Vec::new();
+            tx.consensus_encode(&mut tx_vec)?;
             for i in tx.input {
                 UTXOID::from(&i).rem(db, idx, rewind)?;
             }
             for (i, o) in tx.output.into_iter().enumerate() {
-                UTXO::from_txout(&txid, &o, i as u32, tx_vec.clone()).add(db)?;
+                UTXO::from_txout(&txid, &o, i as u32).add(db, &tx_vec)?;
             }
         }
 
@@ -56,8 +56,8 @@ impl<'a> Block<'a> {
     }
 
     pub fn undo(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
-        for (id, data) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
-            UTXO::from((id, data.clone())).add(db)?;
+        for (id, (data, raw)) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
+            UTXO::from((id, data.clone())).add(db, raw)?;
         }
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
         for tx in self {

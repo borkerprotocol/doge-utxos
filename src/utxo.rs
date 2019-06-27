@@ -14,14 +14,12 @@ pub struct UTXO<'a> {
     txid: &'a [u8; 32],
     vout: u32,
     value: u64,
-    raw: Vec<u8>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct UTXOData {
     address: Option<[u8; 21]>,
     value: u64,
-    raw: Vec<u8>,
 }
 impl<'a> From<(&'a UTXOID, UTXOData)> for UTXO<'a> {
     fn from((id, data): (&'a UTXOID, UTXOData)) -> Self {
@@ -30,7 +28,6 @@ impl<'a> From<(&'a UTXOID, UTXOData)> for UTXO<'a> {
             txid: &id.txid,
             vout: id.vout,
             value: data.value,
-            raw: data.raw,
         }
     }
 }
@@ -44,14 +41,13 @@ impl<'a> From<UTXO<'a>> for (UTXOID, UTXOData) {
             UTXOData {
                 address: utxo.address,
                 value: utxo.value,
-                raw: utxo.raw,
             },
         )
     }
 }
 
 impl<'a> UTXO<'a> {
-    pub fn add(self, db: &mut DB) -> Result<(), Error> {
+    pub fn add(self, db: &mut DB, raw: &[u8]) -> Result<(), Error> {
         if let Some(address) = self.address {
             let mut addr_key = Vec::with_capacity(26);
             addr_key.push(1_u8);
@@ -65,8 +61,10 @@ impl<'a> UTXO<'a> {
             addr_key.extend(&len);
 
             let mut utxoid_key = Vec::with_capacity(37);
-            utxoid_key.push(2_u8);
+            utxoid_key.push(4_u8);
             utxoid_key.extend(self.txid);
+            ldb_try!(db.put(&utxoid_key, raw));
+            utxoid_key[0] = 2;
             utxoid_key.extend(&self.vout.to_ne_bytes());
             ldb_try!(db.put(&utxoid_key, &addr_key));
 
@@ -74,14 +72,12 @@ impl<'a> UTXO<'a> {
             addr_value.extend(self.txid);
             addr_value.extend(&self.vout.to_ne_bytes());
             addr_value.extend(&self.value.to_ne_bytes());
-            let mut raw = self.raw;
-            addr_value.append(&mut raw);
             ldb_try!(db.put(&addr_key, &addr_value));
         }
         Ok(())
     }
 
-    pub fn from_txout(txid: &'a [u8; 32], out: &'a bitcoin::TxOut, vout: u32, raw: Vec<u8>) -> Self {
+    pub fn from_txout(txid: &'a [u8; 32], out: &'a bitcoin::TxOut, vout: u32) -> Self {
         UTXO {
             txid,
             vout,
@@ -119,7 +115,6 @@ impl<'a> UTXO<'a> {
                     None
                 }
             },
-            raw,
         }
     }
 
@@ -148,7 +143,6 @@ impl<'a> UTXO<'a> {
                 .get(36..44)
                 .ok_or(format_err!("unexpected end of input"))?,
         );
-        let raw = addr_value.get(44..).ok_or(format_err!("unexpected end of input"))?.to_vec();
         Ok((
             UTXOID {
                 txid,
@@ -157,7 +151,6 @@ impl<'a> UTXO<'a> {
             UTXOData {
                 address: Some(address),
                 value: u64::from_ne_bytes(value),
-                raw,
             },
         ))
     }
@@ -166,8 +159,28 @@ impl<'a> UTXO<'a> {
 impl UTXOID {
     pub fn rem(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         let mut utxoid_key = Vec::with_capacity(37);
-        utxoid_key.push(2_u8);
+        utxoid_key.push(4_u8);
         utxoid_key.extend(&self.txid);
+        let raw = ldb_try!(db.get(&utxoid_key)).ok_or(format_err!("missing raw"))?;
+        let tx: bitcoin::Transaction =
+            bitcoin::consensus::Decodable::consensus_decode(&mut std::io::Cursor::new(&raw))?;
+        let unspents = (0..(tx.output.len() as u32))
+            .map(|i: u32| {
+                let mut key = Vec::with_capacity(37);
+                key.push(2_u8);
+                key.extend(&self.txid);
+                key.extend(&i.to_ne_bytes());
+                let utxo_val = ldb_try!(db.get(&key));
+                Ok(utxo_val.map(|_| ()))
+            })
+            .map(|a| a.transpose())
+            .filter_map(|a| a)
+            .collect::<Result<Vec<()>, Error>>()?
+            .len();
+        if unspents == 0 {
+            ldb_try!(db.delete(&utxoid_key));
+        }
+        utxoid_key[0] = 2;
         utxoid_key.extend(&self.vout.to_ne_bytes());
         let addr_key = match ldb_try!(db.get(&utxoid_key)) {
             Some(a) => a,
@@ -197,7 +210,7 @@ impl UTXOID {
                 &addr_key,
                 &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
             )?;
-            rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, kv.1);
+            rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));
             ldb_try!(db.put(&addr_key, &replacement_addr_value));
         }
         ldb_try!(db.delete(&replacement_addr_key));

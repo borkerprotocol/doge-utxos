@@ -31,7 +31,7 @@ pub const P2PKH: u8 = 30;
 pub const P2SH: u8 = 22;
 pub const CONFIRMATIONS: usize = 10;
 
-pub type Rewind = Vec<HashMap<utxo::UTXOID, utxo::UTXOData>>;
+pub type Rewind = Vec<HashMap<utxo::UTXOID, (utxo::UTXOData, Vec<u8>)>>;
 
 #[derive(Deserialize)]
 struct Config {

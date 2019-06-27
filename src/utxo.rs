@@ -74,6 +74,8 @@ impl<'a> UTXO<'a> {
             addr_value.extend(self.txid);
             addr_value.extend(&self.vout.to_ne_bytes());
             addr_value.extend(&self.value.to_ne_bytes());
+            let mut raw = self.raw;
+            addr_value.append(&mut raw);
             ldb_try!(db.put(&addr_key, &addr_value));
         }
         Ok(())

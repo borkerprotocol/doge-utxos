@@ -160,6 +160,7 @@ fn main() -> Result<(), Error> {
                 // TODO: don't duplicate
             }
             Some(path_and_query) => {
+                bail!("wat");
                 eprintln!("{:?}", path_and_query);
                 futures::future::Either::A(match req.headers().get("Content-Type") {
                     Some(a) if a.as_bytes().starts_with(b"application/json") => {

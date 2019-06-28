@@ -16,7 +16,7 @@ node_password: local321
 `GET /utxos`
 * query params
   * address - required
-  * amount (shibatoshis)
+  * amount (shibatoshis) - required
   * minCount - optional - default 20
 
 

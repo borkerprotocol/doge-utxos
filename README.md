@@ -1,22 +1,29 @@
-# DOGE-utxos
+# Superdoge
 
 Maintains the current Dogecoin utxo set, indexed by address.
+
+## Running
+- Edit config.yaml. Example:
+```
+node_uri: "http://localhost:22555/"
+node_user: dogecoinrpc
+node_password: local321
+```
+- `cargo run --release`
 
 ## Get utxos
 
 `GET /utxos`
 * query params
   * address - required
-  * page - optional - default 1
-  * pageSize - optional - default 100
+  * amount (shibatoshis)
+  * minCount - optional - default 20
 
 
-## Get utxos for target amount
+## Get balance
 
-`GET /utxos/amount`
+`GET /balance`
 
-Grabs utxos in batches from the DB until the the sum of their values is >= amount. Otherwise throws `insufficient funds` error. 
+Get balance of address
 * query params
   * address - required
-  * amount (in sibatoshis) - required
-  * batchSize - optional - default 10

@@ -52,12 +52,9 @@ impl<'a> UTXO<'a> {
         utxoid_key.push(5_u8);
         utxoid_key.extend(self.txid);
         if let Some((raw, c)) = raw {
-            ldb_try!(db.put(
-            &utxoid_key,
-            &c.to_ne_bytes()
-        ));
+            ldb_try!(db.put(&utxoid_key, &c.to_ne_bytes()));
             utxoid_key[0] = 4;
-        ldb_try!(db.put(&utxoid_key, raw));
+            ldb_try!(db.put(&utxoid_key, raw));
         }
         if let Some(address) = self.address {
             let mut addr_key = Vec::with_capacity(26);
@@ -200,21 +197,22 @@ impl UTXOID {
         replacement_addr_key.extend(&addr_key[0..22]);
         replacement_addr_key.extend(&replacement_idx.to_ne_bytes());
 
-            let kv = UTXO::from_kv(
-                &addr_key,
-                &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
-            )?;
-            rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));
+        let kv = UTXO::from_kv(
+            &addr_key,
+            &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
+        )?;
+        rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));
         if &replacement_idx.to_ne_bytes() != &addr_key[22..] {
-            let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key))
-                .ok_or(format_err!("missing replacement addr data"))?;
-            let update_index = UTXO::from_kv(&replacement_addr_key, &replacement_addr_value)?;
-            let mut replacement_utxoid_key = Vec::with_capacity(37);
-            replacement_utxoid_key.push(2_u8);
-            replacement_utxoid_key.extend(&update_index.0.txid);
-            replacement_utxoid_key.extend(&update_index.0.vout.to_ne_bytes());
-            ldb_try!(db.put(&replacement_utxoid_key, &addr_key));
-            ldb_try!(db.put(&addr_key, &replacement_addr_value));
+            let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key));
+            if let Some(replacement_addr_value) = replacement_addr_value {
+                let update_index = UTXO::from_kv(&replacement_addr_key, &replacement_addr_value)?;
+                let mut replacement_utxoid_key = Vec::with_capacity(37);
+                replacement_utxoid_key.push(2_u8);
+                replacement_utxoid_key.extend(&update_index.0.txid);
+                replacement_utxoid_key.extend(&update_index.0.vout.to_ne_bytes());
+                ldb_try!(db.put(&replacement_utxoid_key, &addr_key));
+                ldb_try!(db.put(&addr_key, &replacement_addr_value));
+            }
         }
         ldb_try!(db.delete(&replacement_addr_key));
         ldb_try!(db.delete(&utxoid_key));

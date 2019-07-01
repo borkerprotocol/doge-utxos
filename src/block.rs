@@ -5,6 +5,7 @@ use bitcoin::consensus::Decodable;
 use failure::Error;
 use leveldb_rs::DB;
 use std::collections::HashMap;
+use throttled_bitcoin_rpc::BitcoinRpcClient;
 
 pub struct Block<'a> {
     pub header: bitcoin::BlockHeader,
@@ -63,11 +64,18 @@ impl<'a> Block<'a> {
         Ok(())
     }
 
-    pub fn undo(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
+    pub fn undo(self, client: &BitcoinRpcClient, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         for (id, (data, raw)) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
-            let tx: bitcoin::Transaction =
-                Decodable::consensus_decode(&mut std::io::Cursor::new(&raw))?;
-            UTXO::from((id, data.clone())).add(db, Some((&raw, tx.output.len() as u32)))?;
+            let raw = match raw {
+                Some(raw) => std::borrow::Cow::Borrowed(raw),
+                None => std::borrow::Cow::Owned(hex::decode(client.getrawtransaction(hex::encode(&id.txid), 0)?.Zero()?)?),
+            };
+            let tx: bitcoin::Transaction = Decodable::consensus_decode(&mut std::io::Cursor::new(raw.as_slice()))?;
+            let utxo = match data {
+                Some(data) => UTXO::from((id, data.clone())),
+                None => UTXO::from_txout(&id.txid, &tx.output[id.vout as usize], id.vout),
+            };
+            utxo.add(db, Some((raw.as_slice(), tx.output.len() as u32)))?;
         }
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
         for tx in self {

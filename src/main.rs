@@ -31,7 +31,7 @@ pub const P2PKH: u8 = 30;
 pub const P2SH: u8 = 22;
 pub const CONFIRMATIONS: usize = 10;
 
-pub type Rewind = Vec<HashMap<utxo::UTXOID, (utxo::UTXOData, Vec<u8>)>>;
+pub type Rewind = Vec<HashMap<utxo::UTXOID, (Option<utxo::UTXOData>, Option<Vec<u8>>)>>;
 
 #[derive(Deserialize)]
 struct Config {
@@ -310,7 +310,7 @@ fn handle_rewind(
         _ => bail!("unexpected response"),
     };
     let block = Block::from_slice(&block_raw)?;
-    block.undo(db, idx, rewind)?;
+    block.undo(client, db, idx, rewind)?;
     let block_raw = match client.getblock(hex::encode(&hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),

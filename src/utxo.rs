@@ -163,8 +163,10 @@ impl<'a> UTXO<'a> {
 impl UTXOID {
     pub fn rem(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         let mut utxoid_key = Vec::with_capacity(37);
-        utxoid_key.push(5_u8);
+        utxoid_key.push(4_u8);
         utxoid_key.extend(&self.txid);
+        let raw = ldb_try!(db.get(&utxoid_key));
+        utxoid_key[0] = 5;
         let unspents = ldb_try!(db.get(&utxoid_key))
             .map(|c| {
                 let mut buf = [0_u8; 4];
@@ -177,8 +179,6 @@ impl UTXOID {
             ldb_try!(db.delete(&utxoid_key));
         }
         ldb_try!(db.put(&utxoid_key, &unspents.to_ne_bytes()));
-        utxoid_key[0] = 4;
-        let raw = ldb_try!(db.get(&utxoid_key)).ok_or(format_err!("missing raw"))?;
         utxoid_key[0] = 2;
         utxoid_key.extend(&self.vout.to_ne_bytes());
         let addr_key = match ldb_try!(db.get(&utxoid_key)) {
@@ -197,10 +197,16 @@ impl UTXOID {
         replacement_addr_key.extend(&addr_key[0..22]);
         replacement_addr_key.extend(&replacement_idx.to_ne_bytes());
 
-        let kv = UTXO::from_kv(
+        let kv = match ldb_try!(db.get(&addr_key)) {
+            Some(addr_val) => {
+                let a = UTXO::from_kv(
             &addr_key,
-            &ldb_try!(db.get(&addr_key)).ok_or(format_err!("missing key to delete"))?,
+            &addr_val,
         )?;
+        (a.0, Some(a.1))
+            },
+            None => (self, None),
+        };
         rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));
         if &replacement_idx.to_ne_bytes() != &addr_key[22..] {
             let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key));

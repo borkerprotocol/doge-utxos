@@ -45,6 +45,13 @@ struct RpcMethod {
     method: String,
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RpcQuery {
+    Single(RpcMethod),
+    Multi(Vec<RpcMethod>),
+}
+
 fn main() -> Result<(), Error> {
     let conf: Config = serde_yaml::from_reader(std::fs::File::open("config.yaml")?)?;
     let client_arc = BitcoinRpcClient::new(
@@ -123,15 +130,19 @@ fn main() -> Result<(), Error> {
                     let body = bstream.concat2().map_err(Error::from);
                     let m_b = body.and_then(|b| {
                         serde_json::from_slice(&b)
-                            .map(|m: RpcMethod| (m, b))
+                            .map(|m: RpcQuery| (m, b))
                             .map_err(Error::from)
                     });
-                    let b = m_b.and_then(|(m, b)| {
-                        if m.method == "stop" {
+                    let b = m_b.and_then(|(m, b)| match m {
+                        RpcQuery::Single(ref m) if m.method == "stop" => {
                             bail!("unauthorized method")
-                        } else {
-                            Ok(b)
                         }
+                        RpcQuery::Multi(ref m)
+                            if m.iter().filter(|m| m.method == "stop").count() > 0 =>
+                        {
+                            bail!("unauthorized method")
+                        }
+                        _ => Ok(b),
                     });
                     let req = b.and_then(move |b| r.body(Body::from(b)).map_err(Error::from));
                     Either::B(Either::A(
@@ -161,15 +172,19 @@ fn main() -> Result<(), Error> {
                     let body = bstream.concat2().map_err(Error::from);
                     let m_b = body.and_then(|b| {
                         serde_json::from_slice(&b)
-                            .map(|m: RpcMethod| (m, b))
+                            .map(|m: RpcQuery| (m, b))
                             .map_err(Error::from)
                     });
-                    let b = m_b.and_then(|(m, b)| {
-                        if m.method == "stop" {
+                    let b = m_b.and_then(|(m, b)| match m {
+                        RpcQuery::Single(ref m) if m.method == "stop" => {
                             bail!("unauthorized method")
-                        } else {
-                            Ok(b)
                         }
+                        RpcQuery::Multi(ref m)
+                            if m.iter().filter(|m| m.method == "stop").count() > 0 =>
+                        {
+                            bail!("unauthorized method")
+                        }
+                        _ => Ok(b),
                     });
                     let req = b.and_then(move |b| r.body(Body::from(b)).map_err(Error::from));
                     Either::B(Either::B(

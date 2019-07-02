@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
     let db_arc = Arc::new(RwLock::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
-    let (send, recv) = crossbeam_channel::bounded(60);
+    let (send, recv) = crossbeam_channel::bounded(100);
     let db = db_arc.clone();
     let client = client_arc.clone();
     let b = std::thread::spawn(move || {
@@ -97,7 +97,7 @@ fn main() -> Result<(), Error> {
             };
             use throttled_bitcoin_rpc::BatchRequest;
             let mut batcher = client.batcher::<String>();
-            let idxs = (idx + 1)..std::cmp::min(idx + 31, count + 1);
+            let idxs = (idx + 1)..std::cmp::min(idx + 11, count + 1);
             for i in idxs.clone() {
                 match batcher.getblockhash(i) {
                     Ok(_) => (),

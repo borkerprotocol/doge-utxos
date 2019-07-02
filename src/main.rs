@@ -190,6 +190,7 @@ fn main() -> Result<(), Error> {
                     if i % 500 == 0 {
                         match client.getblockcount().ok() {
                             Some(count) if i < count as u32 => {
+                                println!("average {} blocks/second", 1.0 / tpb.as_secs_f64());
                                 let remaining = tpb * (count - i);
                                 println!("{} remaining", humantime::format_duration(remaining));
                             }

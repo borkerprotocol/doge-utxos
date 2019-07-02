@@ -68,7 +68,7 @@ impl<'a> Block<'a> {
         for (id, (data, raw)) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
             let raw = match raw {
                 Some(raw) => std::borrow::Cow::Borrowed(raw),
-                None => std::borrow::Cow::Owned(hex::decode(client.getrawtransaction(hex::encode(&id.txid), 0)?.Zero()?)?),
+                None => std::borrow::Cow::Owned(hex::decode(client.getrawtransaction(&hex::encode(&id.txid), 0)?.Zero()?)?),
             };
             let tx: bitcoin::Transaction = Decodable::consensus_decode(&mut std::io::Cursor::new(raw.as_slice()))?;
             let utxo = match data {

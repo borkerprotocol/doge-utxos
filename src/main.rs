@@ -68,6 +68,100 @@ fn main() -> Result<(), Error> {
     let db_arc = Arc::new(RwLock::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
+    let (send, recv) = crossbeam_channel::bounded(50);
+    let db = db_arc.clone();
+    let client = client_arc.clone();
+    let b = std::thread::spawn(move || {
+        let mut idx = match db.read().get(&[0_u8]) {
+            Ok(Some(b)) => {
+                let mut buf = [0_u8; 4];
+                if b.len() == 4 {
+                    buf.clone_from_slice(&b);
+                } else {
+                    panic!("invalid size for u32");
+                }
+                u32::from_ne_bytes(buf)
+            }
+            Ok(None) => 1,
+            Err(e) => {
+                panic!("{}", e);
+            }
+        };
+        'main: loop {
+            let count = match client.getblockcount() {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}: {}", line!(), e);
+                    continue 'main;
+                }
+            };
+            use throttled_bitcoin_rpc::BatchRequest;
+            let mut batcher = client.batcher::<String>();
+            let idxs = (idx + 1)..std::cmp::min(idx + 11, count + 1);
+            for i in idxs.clone() {
+                match batcher.getblockhash(i) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("{}: {}", line!(), e);
+                        continue 'main;
+                    }
+                }
+
+            }
+            let hashes = match batcher.send() {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}: {}", line!(), e);
+                    continue 'main;
+                }
+            };
+            for hash in hashes.iter() {
+                match batcher.getblock(hash, false) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("{}: {}", line!(), e);
+                        continue 'main;
+                    }
+                }
+            }
+            let blocks = match batcher.send() {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{}: {}", line!(), e);
+                    continue 'main;
+                }
+            };
+            for ((i, hash), block) in idxs
+                .into_iter()
+                .zip(hashes.into_iter())
+                .into_iter()
+                .zip(blocks.into_iter())
+            {
+                let hash = match hex::decode(hash) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        eprintln!("{}: {}", line!(), e);
+                        continue 'main;
+                    }
+                };
+                let block = match hex::decode(block) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        eprintln!("{}: {}", line!(), e);
+                        continue 'main;
+                    }
+                };
+                match send.send((i, hash, block)) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("{}: {}", line!(), e);
+                        continue 'main;
+                    }
+                };
+                idx = i;
+            }
+        }
+    });
     let db = db_arc.clone();
     let client = client_arc.clone();
     let t = std::thread::spawn(move || {
@@ -83,7 +177,7 @@ fn main() -> Result<(), Error> {
                         .take(CONFIRMATIONS)
                         .collect()
                 });
-            match try_process_block(&client, &mut db.write(), &mut rewind) {
+            match try_process_block(&client, &recv, &mut db.write(), &mut rewind) {
                 Ok(Some(i)) => {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
@@ -266,40 +360,26 @@ fn main() -> Result<(), Error> {
     }));
 
     t.join().unwrap();
+    b.join().unwrap();
 
     Ok(())
 }
 
 fn try_process_block(
     client: &BitcoinRpcClient,
+    recv: &crossbeam_channel::Receiver<(u32, Vec<u8>, Vec<u8>)>,
     db: &mut DB,
     rewind: &mut Rewind,
 ) -> Result<Option<u32>, Error> {
-    let idx = match ldb_try!(db.get(&[0_u8])) {
-        Some(b) => {
-            let mut buf = [0_u8; 4];
-            if b.len() == 4 {
-                buf.clone_from_slice(&b);
-            } else {
-                bail!("invalid size for u32");
-            }
-            u32::from_ne_bytes(buf)
-        }
-        None => 1,
+    let (idx, bhash, block_raw) = match recv.try_recv() {
+        Ok(a) => a,
+        Err(crossbeam_channel::TryRecvError::Empty) => return Ok(None),
+        Err(e) => return Err(Error::from(e)),
     };
     let mut bkey = Vec::with_capacity(9);
     bkey.push(3_u8);
     bkey.extend(&idx.to_ne_bytes());
-    let bhash_str = match client.getblockhash(idx as isize) {
-        Ok(a) => a,
-        _ => return Ok(None),
-    };
-    let bhash = hex::decode(&bhash_str)?;
     ldb_try!(db.put(&bkey, &bhash));
-    let block_raw = match client.getblock(bhash_str, false)? {
-        throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
-        _ => bail!("unexpected response"),
-    };
     let block = Block::from_slice(&block_raw)?;
     handle_rewind(
         client,
@@ -336,13 +416,13 @@ fn handle_rewind(
         return Ok(());
     }
     println!("reverting {}", hex::encode(old_hash.as_slice()));
-    let block_raw = match client.getblock(hex::encode(old_hash), false)? {
+    let block_raw = match client.getblock(&hex::encode(old_hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),
     };
     let block = Block::from_slice(&block_raw)?;
     block.undo(client, db, idx, rewind)?;
-    let block_raw = match client.getblock(hex::encode(&hash), false)? {
+    let block_raw = match client.getblock(&hex::encode(&hash), false)? {
         throttled_bitcoin_rpc::reply::getblock::False(a) => hex::decode(a)?,
         _ => bail!("unexpected response"),
     };

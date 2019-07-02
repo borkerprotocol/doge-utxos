@@ -98,8 +98,10 @@ fn main() -> Result<(), Error> {
                             Some(count) if i < count as u32 => {
                                 let remaining = (count as f64 - i as f64) / rate;
                                 println!(
-                                    "{:?} remaining",
-                                    std::time::Duration::from_secs_f64(remaining)
+                                    "{} remaining",
+                                    humantime::format_duration(std::time::Duration::from_secs_f64(
+                                        remaining
+                                    ))
                                 );
                             }
                             _ => (),

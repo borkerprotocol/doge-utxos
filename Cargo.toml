@@ -8,7 +8,7 @@ edition = "2018"
 leveldb-rs = "0.0.7"
 failure = "0.1.5"
 bitcoin = "0.18.0"
-throttled_bitcoin_rpc = { version = "0.2.1", features = ["doge"] }
+throttled_bitcoin_rpc = { version = "0.2.2", features = ["doge"] }
 hex = "0.3.2"
 serde = { version = "1.0.92", features = ["derive"] }
 serde_yaml = "0.8.9"

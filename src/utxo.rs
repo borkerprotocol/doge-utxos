@@ -199,12 +199,9 @@ impl UTXOID {
 
         let kv = match ldb_try!(db.get(&addr_key)) {
             Some(addr_val) => {
-                let a = UTXO::from_kv(
-            &addr_key,
-            &addr_val,
-        )?;
-        (a.0, Some(a.1))
-            },
+                let a = UTXO::from_kv(&addr_key, &addr_val)?;
+                (a.0, Some(a.1))
+            }
             None => (self, None),
         };
         rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));

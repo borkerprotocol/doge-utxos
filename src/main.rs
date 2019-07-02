@@ -72,6 +72,8 @@ fn main() -> Result<(), Error> {
     let client = client_arc.clone();
     let t = std::thread::spawn(move || {
         let mut time = std::time::Instant::now();
+        let mut rate = 0.0;
+        let mut periods = 0.0;
         loop {
             let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
                 .map_err(Error::from)
@@ -85,8 +87,20 @@ fn main() -> Result<(), Error> {
                 Ok(Some(i)) => {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
-                        println!("{:.2} Blocks/second", 100.0 / time.elapsed().as_secs_f64());
+                        let inst_rate = 100.0 / time.elapsed().as_secs_f64();
+                        println!("{:.2} Blocks/second", inst_rate);
+                        rate = (rate * periods + inst_rate) / (periods + 1.0);
+                        periods += 1.0;
                         time = std::time::Instant::now();
+                    }
+                    if i % 500 == 0 {
+                        if let Some(count) = client.getblockcount().ok() {
+                            let remaining = (count as f64 - i as f64) / rate;
+                            println!(
+                                "{:?} remaining",
+                                std::time::Duration::from_secs_f64(remaining)
+                            );
+                        }
                     }
                 }
                 Ok(None) => {

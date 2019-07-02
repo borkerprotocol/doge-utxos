@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
     let db_arc = Arc::new(RwLock::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
-    let (send, recv) = crossbeam_channel::bounded(50);
+    let (send, recv) = crossbeam_channel::bounded(60);
     let db = db_arc.clone();
     let client = client_arc.clone();
     let b = std::thread::spawn(move || {
@@ -97,7 +97,7 @@ fn main() -> Result<(), Error> {
             };
             use throttled_bitcoin_rpc::BatchRequest;
             let mut batcher = client.batcher::<String>();
-            let idxs = (idx + 1)..std::cmp::min(idx + 11, count + 1);
+            let idxs = (idx + 1)..std::cmp::min(idx + 31, count + 1);
             for i in idxs.clone() {
                 match batcher.getblockhash(i) {
                     Ok(_) => (),
@@ -166,8 +166,8 @@ fn main() -> Result<(), Error> {
     let client = client_arc.clone();
     let t = std::thread::spawn(move || {
         let mut time = std::time::Instant::now();
-        let mut rate = 0.0;
-        let mut periods = 0.0;
+        let mut tpb = std::time::Duration::from_secs(0);
+        let mut periods = 0;
         loop {
             let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
                 .map_err(Error::from)
@@ -181,22 +181,17 @@ fn main() -> Result<(), Error> {
                 Ok(Some(i)) => {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
-                        let inst_rate = 100.0 / time.elapsed().as_secs_f64();
-                        println!("{:.2} blocks/second", inst_rate);
-                        rate = (rate * periods + inst_rate) / (periods + 1.0);
-                        periods += 1.0;
+                        let inst_tpb = time.elapsed() / 100;
+                        println!("{:.2} blocks/second", 1.0 / inst_tpb.as_secs_f64());
+                        tpb = ((tpb * periods) + inst_tpb) / (periods + 1);
+                        periods += 1;
                         time = std::time::Instant::now();
                     }
                     if i % 500 == 0 {
                         match client.getblockcount().ok() {
                             Some(count) if i < count as u32 => {
-                                let remaining = (count as f64 - i as f64) / rate;
-                                println!(
-                                    "{} remaining",
-                                    humantime::format_duration(std::time::Duration::from_secs_f64(
-                                        remaining
-                                    ))
-                                );
+                                let remaining = tpb * (count - i);
+                                println!("{} remaining", humantime::format_duration(remaining));
                             }
                             _ => (),
                         }

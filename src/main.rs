@@ -88,7 +88,7 @@ fn main() -> Result<(), Error> {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
                         let inst_rate = 100.0 / time.elapsed().as_secs_f64();
-                        println!("{:.2} Blocks/second", inst_rate);
+                        println!("{:.2} blocks/second", inst_rate);
                         rate = (rate * periods + inst_rate) / (periods + 1.0);
                         periods += 1.0;
                         time = std::time::Instant::now();

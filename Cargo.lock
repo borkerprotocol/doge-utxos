@@ -257,7 +257,7 @@ dependencies = [
  "serde_cbor 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "throttled_bitcoin_rpc 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "throttled_bitcoin_rpc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1249,19 +1249,19 @@ dependencies = [
 
 [[package]]
 name = "throttled_bitcoin_rpc"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest 0.9.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.92 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
- "throttled_json_rpc 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "throttled_json_rpc 0.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "throttled_json_rpc"
-version = "0.0.4"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1692,8 +1692,8 @@ dependencies = [
 "checksum synstructure 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
 "checksum tempfile 3.0.8 (registry+https://github.com/rust-lang/crates.io-index)" = "7dc4738f2e68ed2855de5ac9cdbe05c9216773ecde4739b2f095002ab03a13ef"
 "checksum thread_local 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
-"checksum throttled_bitcoin_rpc 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8b9758702710fd884a3eb996c9a0e6df5936aab3b13b157689cf68c9c87c4c9d"
-"checksum throttled_json_rpc 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "a67b3cff971b82a3b1b9802e432c8e29790b12f69a87f92dbcc0065b393acfad"
+"checksum throttled_bitcoin_rpc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d5827026d8eaa058d71f0eb5fface25ec844fd4d20f1f8cb378f3cf1ee47f6a0"
+"checksum throttled_json_rpc 0.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "2df466d1fd405bd300c985eadfe10610ae53785cc0fe6676f588ed40660d6d05"
 "checksum time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
 "checksum tokio 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)" = "ec2ffcf4bcfc641413fa0f1427bf8f91dfc78f56a6559cbf50e04837ae442a87"
 "checksum tokio-buf 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8fb220f46c53859a4b7ec083e41dec9778ff0b1851c0942b211edb89e0ccdc46"

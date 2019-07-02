@@ -97,7 +97,7 @@ fn main() -> Result<(), Error> {
             };
             use throttled_bitcoin_rpc::BatchRequest;
             let mut batcher = client.batcher::<String>();
-            let idxs = (idx + 1)..std::cmp::min(idx + 11, count + 1);
+            let idxs = (idx + 1)..std::cmp::min(idx + 21, count + 1);
             for i in idxs.clone() {
                 match batcher.getblockhash(i) {
                     Ok(_) => (),

@@ -85,7 +85,7 @@ fn main() -> Result<(), Error> {
                 Ok(Some(i)) => {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
-                        println!("{} Blocks/second", 100.0 / time.elapsed().as_secs_f64());
+                        println!("{:.2} Blocks/second", 100.0 / time.elapsed().as_secs_f64());
                         time = std::time::Instant::now();
                     }
                 }

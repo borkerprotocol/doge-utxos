@@ -21,10 +21,10 @@ use hyper::rt::Stream;
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use leveldb_rs::DB;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::Mutex;
 use throttled_bitcoin_rpc::BitcoinRpcClient;
 
 pub const P2PKH: u8 = 30;
@@ -63,7 +63,7 @@ fn main() -> Result<(), Error> {
         0,
     );
     let path = std::path::Path::new("utxos.db");
-    let db_arc = Arc::new(Mutex::new(ldb_try!(
+    let db_arc = Arc::new(RwLock::new(ldb_try!(
         DB::open(path).or_else(|_| DB::create(path))
     )));
     let db = db_arc.clone();
@@ -77,7 +77,7 @@ fn main() -> Result<(), Error> {
                     .take(CONFIRMATIONS)
                     .collect()
             });
-        match try_process_block(&client, &mut db.lock().unwrap(), &mut rewind) {
+        match try_process_block(&client, &mut db.write(), &mut rewind) {
             Ok(Some(i)) => println!("scanned {}", i),
             Ok(None) => {
                 match std::fs::File::create("rewind.cbor")
@@ -194,22 +194,22 @@ fn main() -> Result<(), Error> {
                 }
                 Some(path_and_query) => Either::A(match req.headers().get("Content-Type") {
                     Some(a) if a.as_bytes().starts_with(b"application/json") => result(
-                        api::handle_request(&db.lock().unwrap(), path_and_query)
+                        api::handle_request(&db.read(), path_and_query)
                             .and_then(|res| res.to_json())
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/cbor") => result(
-                        api::handle_request(&db.lock().unwrap(), path_and_query)
+                        api::handle_request(&db.read(), path_and_query)
                             .and_then(|res| serde_cbor::to_vec(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => result(
-                        api::handle_request(&db.lock().unwrap(), path_and_query)
+                        api::handle_request(&db.read(), path_and_query)
                             .and_then(|res| serde_yaml::to_string(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => result(
-                        api::handle_request(&db.lock().unwrap(), path_and_query)
+                        api::handle_request(&db.read(), path_and_query)
                             .map(|res| res.to_bytes())
                             .map(|res| Response::new(Body::from(res))),
                     ),

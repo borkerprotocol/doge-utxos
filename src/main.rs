@@ -94,12 +94,15 @@ fn main() -> Result<(), Error> {
                         time = std::time::Instant::now();
                     }
                     if i % 500 == 0 {
-                        if let Some(count) = client.getblockcount().ok() {
-                            let remaining = (count as f64 - i as f64) / rate;
-                            println!(
-                                "{:?} remaining",
-                                std::time::Duration::from_secs_f64(remaining)
-                            );
+                        match client.getblockcount().ok() {
+                            Some(count) if i < count as u32 => {
+                                let remaining = (count as f64 - i as f64) / rate;
+                                println!(
+                                    "{:?} remaining",
+                                    std::time::Duration::from_secs_f64(remaining)
+                                );
+                            }
+                            _ => (),
                         }
                     }
                 }

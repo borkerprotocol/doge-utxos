@@ -1,3 +1,5 @@
+#![feature(duration_float)]
+
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -68,28 +70,38 @@ fn main() -> Result<(), Error> {
     )));
     let db = db_arc.clone();
     let client = client_arc.clone();
-    let t = std::thread::spawn(move || loop {
-        let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
-            .map_err(Error::from)
-            .and_then(|f| serde_cbor::from_reader(f).map_err(Error::from))
-            .unwrap_or_else(|_| {
-                std::iter::repeat_with(|| HashMap::new())
-                    .take(CONFIRMATIONS)
-                    .collect()
-            });
-        match try_process_block(&client, &mut db.write(), &mut rewind) {
-            Ok(Some(i)) => println!("scanned {}", i),
-            Ok(None) => {
-                match std::fs::File::create("rewind.cbor")
-                    .map_err(Error::from)
-                    .and_then(|mut f| serde_cbor::to_writer(&mut f, &rewind).map_err(Error::from))
-                {
-                    Ok(_) => (),
-                    Err(e) => eprintln!("ERROR SAVING REWIND: {}", e),
+    let t = std::thread::spawn(move || {
+        let mut time = std::time::Instant::now();
+        loop {
+            let mut rewind: Rewind = std::fs::File::open("rewind.cbor")
+                .map_err(Error::from)
+                .and_then(|f| serde_cbor::from_reader(f).map_err(Error::from))
+                .unwrap_or_else(|_| {
+                    std::iter::repeat_with(|| HashMap::new())
+                        .take(CONFIRMATIONS)
+                        .collect()
+                });
+            match try_process_block(&client, &mut db.write(), &mut rewind) {
+                Ok(Some(i)) => {
+                    println!("scanned {}", i);
+                    if i % 100 == 0 {
+                        println!("{} Blocks/second", 100.0 / time.elapsed().as_secs_f64());
+                        time = std::time::Instant::now();
+                    }
                 }
-            }
-            Err(e) => eprintln!("ERROR: {}{}", e, e.backtrace()),
-        };
+                Ok(None) => {
+                    match std::fs::File::create("rewind.cbor")
+                        .map_err(Error::from)
+                        .and_then(|mut f| {
+                            serde_cbor::to_writer(&mut f, &rewind).map_err(Error::from)
+                        }) {
+                        Ok(_) => (),
+                        Err(e) => eprintln!("ERROR SAVING REWIND: {}", e),
+                    }
+                }
+                Err(e) => eprintln!("ERROR: {}{}", e, e.backtrace()),
+            };
+        }
     });
 
     let addr_http = ([0, 0, 0, 0], 11021).into();

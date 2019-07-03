@@ -163,7 +163,7 @@ fn main() -> Result<(), Error> {
                         continue 'main;
                     }
                 };
-                idx = i;
+                idx = i + 1;
             }
         }
     });

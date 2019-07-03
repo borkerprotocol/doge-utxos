@@ -135,7 +135,7 @@ fn main() -> Result<(), Error> {
                     continue 'main;
                 }
             };
-            println!("{:.2} fetches/second", 1.0 / time.elapsed().as_secs_f64());
+            println!("fetched in {:?}", time.elapsed());
             for ((i, hash), block) in idxs
                 .into_iter()
                 .zip(hashes.into_iter())

@@ -23,6 +23,7 @@ use hyper::rt::Stream;
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use leveldb_rs::DB;
+use leveldb_rs::DBOptions;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::str::FromStr;

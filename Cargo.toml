@@ -5,7 +5,7 @@ authors = ["Aiden McClelland <me@drbonez.dev>"]
 edition = "2018"
 
 [dependencies]
-leveldb-rs = "0.0.7"
+leveldb = "0.8.4"
 failure = "0.1.5"
 bitcoin = "0.18.0"
 throttled_bitcoin_rpc = { version = "0.2.3", features = ["doge"] }
@@ -24,3 +24,4 @@ base64 = "0.10.1"
 parking_lot = "0.8.0"
 humantime = "1.2.0"
 crossbeam-channel = "0.3.8"
+db-key = "0.0.5"

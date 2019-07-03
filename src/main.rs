@@ -13,6 +13,7 @@ macro_rules! ldb_try {
 
 mod api;
 mod block;
+mod key;
 mod utxo;
 
 use crate::block::Block;
@@ -22,7 +23,7 @@ use hyper::rt::Future;
 use hyper::rt::Stream;
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
-use leveldb_rs::DB;
+use leveldb::database::Database;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::str::FromStr;

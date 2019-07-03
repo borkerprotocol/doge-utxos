@@ -17,6 +17,7 @@ mod key;
 mod utxo;
 
 use crate::block::Block;
+use crate::key::Bytes;
 use failure::Error;
 use futures::future::*;
 use hyper::rt::Future;
@@ -24,7 +25,8 @@ use hyper::rt::Stream;
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use leveldb::database::Database;
-use parking_lot::RwLock;
+use leveldb::kv::KV;
+use leveldb::options::*;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -66,14 +68,15 @@ fn main() -> Result<(), Error> {
         0,
     );
     let path = std::path::Path::new("utxos.db");
-    let db_arc = Arc::new(RwLock::new(ldb_try!(
-        DB::open(path).or_else(|_| DB::create(path))
-    )));
-    let (send, recv) = crossbeam_channel::bounded(100);
+    let mut options = Options::new();
+    options.create_if_missing = true;
+    options.max_open_files = Some(500);
+    let db_arc: Arc<Database<Bytes>> = Arc::new(ldb_try!(Database::open(path, options)));
+    let (send, recv) = crossbeam_channel::bounded(50);
     let db = db_arc.clone();
     let client = client_arc.clone();
     let b = std::thread::spawn(move || {
-        let mut idx = match db.read().get(&[0_u8]) {
+        let mut idx = match db.get(ReadOptions::new(), Bytes::from(&[0_u8])) {
             Ok(Some(b)) => {
                 let mut buf = [0_u8; 4];
                 if b.len() == 4 {
@@ -98,7 +101,7 @@ fn main() -> Result<(), Error> {
             };
             use throttled_bitcoin_rpc::BatchRequest;
             let mut batcher = client.batcher::<String>();
-            let idxs = (idx + 1)..std::cmp::min(idx + 21, count + 1);
+            let idxs = idx..std::cmp::min(idx + 20, count + 1);
             let time = std::time::Instant::now();
             for i in idxs.clone() {
                 match batcher.getblockhash(i) {
@@ -132,7 +135,7 @@ fn main() -> Result<(), Error> {
                     continue 'main;
                 }
             };
-            println!("{:.2} fetches/second", 1.0 / time.elapsed().as_secs_f64());
+            println!("fetched in {:?}", time.elapsed());
             for ((i, hash), block) in idxs
                 .into_iter()
                 .zip(hashes.into_iter())
@@ -366,7 +369,7 @@ fn main() -> Result<(), Error> {
 fn try_process_block(
     client: &BitcoinRpcClient,
     recv: &crossbeam_channel::Receiver<(u32, Vec<u8>, Vec<u8>)>,
-    db: &RwLock<DB>,
+    db: &Database<Bytes>,
     rewind: &mut Rewind,
 ) -> Result<Option<u32>, Error> {
     let (idx, bhash, block_raw) = match recv.try_recv() {
@@ -377,7 +380,7 @@ fn try_process_block(
     let mut bkey = Vec::with_capacity(9);
     bkey.push(3_u8);
     bkey.extend(&idx.to_ne_bytes());
-    ldb_try!(db.write().put(&bkey, &bhash));
+    ldb_try!(db.put(WriteOptions::new(), Bytes::from(&bkey), &bhash));
     let block = Block::from_slice(&block_raw)?;
     handle_rewind(
         client,
@@ -387,14 +390,18 @@ fn try_process_block(
         rewind,
     )?;
     block.exec(db, idx, rewind)?;
-    ldb_try!(db.write().put(&[0_u8], &(idx + 1).to_ne_bytes()));
+    ldb_try!(db.put(
+        WriteOptions::new(),
+        Bytes::from(&[0_u8]),
+        &(idx + 1).to_ne_bytes()
+    ));
 
     Ok(Some(idx))
 }
 
 fn handle_rewind(
     client: &BitcoinRpcClient,
-    db: &RwLock<DB>,
+    db: &Database<Bytes>,
     hash: &[u8],
     idx: u32,
     rewind: &mut Rewind,
@@ -409,7 +416,8 @@ fn handle_rewind(
     let mut block_key = Vec::with_capacity(5);
     block_key.push(3_u8);
     block_key.extend(&idx.to_ne_bytes());
-    let old_hash = ldb_try!(db.read().get(&block_key)).ok_or(format_err!("missing block_hash"))?;
+    let old_hash = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&block_key)))
+        .ok_or(format_err!("missing block_hash"))?;
     if old_hash.as_slice() == AsRef::<[u8]>::as_ref(hash) {
         return Ok(());
     }
@@ -433,7 +441,7 @@ fn handle_rewind(
         rewind,
     )?;
     block.exec(db, idx, rewind)?;
-    ldb_try!(db.write().put(&block_key, hash));
+    ldb_try!(db.put(WriteOptions::new(), Bytes::from(&block_key), hash));
 
     Ok(())
 }

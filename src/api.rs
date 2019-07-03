@@ -1,10 +1,12 @@
+use crate::key::Bytes;
 use failure::Error;
-use leveldb_rs::DB;
-use parking_lot::RwLock;
+use leveldb::database::Database;
+use leveldb::kv::KV;
+use leveldb::options::*;
 use std::collections::HashMap;
 
 pub fn handle_request(
-    db: &RwLock<DB>,
+    db: &Database<Bytes>,
     path_and_query: &http::uri::PathAndQuery,
 ) -> Result<UTXORes, Error> {
     match path_and_query.path() {
@@ -41,7 +43,7 @@ pub fn handle_request(
     }
 }
 
-fn get_balance(db: &RwLock<DB>, address: &str) -> Result<u64, Error> {
+fn get_balance(db: &Database<Bytes>, address: &str) -> Result<u64, Error> {
     let mut address_vec = bitcoin::util::base58::from_check(address)?;
     if address_vec.len() != 21 {
         bail!("invalid address length")
@@ -49,7 +51,7 @@ fn get_balance(db: &RwLock<DB>, address: &str) -> Result<u64, Error> {
     let mut addr_key = Vec::with_capacity(26);
     addr_key.push(1_u8);
     addr_key.append(&mut address_vec);
-    let len = ldb_try!(db.read().get(&addr_key)).unwrap_or([0_u8; 4].to_vec());
+    let len = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&addr_key))).unwrap_or([0_u8; 4].to_vec());
     let mut buf = [0_u8; 4];
     if len.len() == 4 {
         buf.clone_from_slice(&len);
@@ -60,7 +62,7 @@ fn get_balance(db: &RwLock<DB>, address: &str) -> Result<u64, Error> {
     for i in 0..len {
         let i_buf = u32::to_ne_bytes(i);
         addr_key[22..].clone_from_slice(&i_buf);
-        let addr_value = ldb_try!(db.read().get(&addr_key)).ok_or(format_err!("utxo missing"))?;
+        let addr_value = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&addr_key))).ok_or(format_err!("utxo missing"))?;
         let mut val_buf = [0_u8; 8];
         val_buf.clone_from_slice(addr_value.get(36..44).ok_or(format_err!("value missing"))?);
         let val = u64::from_ne_bytes(val_buf);
@@ -70,7 +72,7 @@ fn get_balance(db: &RwLock<DB>, address: &str) -> Result<u64, Error> {
 }
 
 fn get_utxos(
-    db: &RwLock<DB>,
+    db: &Database<Bytes>,
     address: &str,
     amount: u64,
     min_count: Option<usize>,
@@ -83,7 +85,7 @@ fn get_utxos(
     let mut addr_key = Vec::with_capacity(26);
     addr_key.push(1_u8);
     addr_key.append(&mut address_vec);
-    let len = ldb_try!(db.read().get(&addr_key)).unwrap_or([0_u8; 4].to_vec());
+    let len = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&addr_key))).unwrap_or([0_u8; 4].to_vec());
     let mut buf = [0_u8; 4];
     if len.len() == 4 {
         buf.clone_from_slice(&len);
@@ -95,7 +97,7 @@ fn get_utxos(
     for i in 0..len {
         let i_buf = u32::to_ne_bytes(i);
         addr_key[22..].clone_from_slice(&i_buf);
-        let addr_value = ldb_try!(db.read().get(&addr_key)).ok_or(format_err!("utxo missing"))?;
+        let addr_value = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&addr_key))).ok_or(format_err!("utxo missing"))?;
         let mut txid = [0_u8; 32];
         txid.clone_from_slice(addr_value.get(0..32).ok_or(format_err!("txid missing"))?);
         let mut vout_buf = [0_u8; 4];
@@ -107,7 +109,7 @@ fn get_utxos(
         let mut tx_key = Vec::with_capacity(33);
         tx_key.push(4_u8);
         tx_key.extend(&txid);
-        let raw = ldb_try!(db.read().get(&tx_key)).ok_or(format_err!("raw missing"))?;
+        let raw = ldb_try!(db.get(ReadOptions::new(), Bytes::from(&tx_key))).ok_or(format_err!("raw missing"))?;
         bal += value;
         utxos.push(UTXOData {
             txid,

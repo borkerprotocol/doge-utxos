@@ -2,6 +2,7 @@
 use crate::Rewind;
 use failure::Error;
 use leveldb_rs::DB;
+use parking_lot::RwLock;
 
 #[derive(Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
 pub struct UTXOID {
@@ -47,36 +48,36 @@ impl<'a> From<UTXO<'a>> for (UTXOID, UTXOData) {
 }
 
 impl<'a> UTXO<'a> {
-    pub fn add(self, db: &mut DB, raw: Option<(&[u8], u32)>) -> Result<(), Error> {
+    pub fn add(self, db: &RwLock<DB>, raw: Option<(&[u8], u32)>) -> Result<(), Error> {
         let mut utxoid_key = Vec::with_capacity(37);
         utxoid_key.push(5_u8);
         utxoid_key.extend(self.txid);
         if let Some((raw, c)) = raw {
-            ldb_try!(db.put(&utxoid_key, &c.to_ne_bytes()));
+            ldb_try!(db.write().put(&utxoid_key, &c.to_ne_bytes()));
             utxoid_key[0] = 4;
-            ldb_try!(db.put(&utxoid_key, raw));
+            ldb_try!(db.write().put(&utxoid_key, raw));
         }
         if let Some(address) = self.address {
             let mut addr_key = Vec::with_capacity(26);
             addr_key.push(1_u8);
             addr_key.extend(address.as_ref());
-            let len = ldb_try!(db.get(&addr_key)).unwrap_or([0_u8; 4].to_vec());
+            let len = ldb_try!(db.read().get(&addr_key)).unwrap_or([0_u8; 4].to_vec());
             let mut buf = [0_u8; 4];
             if len.len() == 4 {
                 buf.clone_from_slice(&len);
             }
-            ldb_try!(db.put(&addr_key, &(u32::from_ne_bytes(buf) + 1).to_ne_bytes()));
+            ldb_try!(db.write().put(&addr_key, &(u32::from_ne_bytes(buf) + 1).to_ne_bytes()));
             addr_key.extend(&len);
 
             utxoid_key[0] = 2;
             utxoid_key.extend(&self.vout.to_ne_bytes());
-            ldb_try!(db.put(&utxoid_key, &addr_key));
+            ldb_try!(db.write().put(&utxoid_key, &addr_key));
 
             let mut addr_value = Vec::with_capacity(44);
             addr_value.extend(self.txid);
             addr_value.extend(&self.vout.to_ne_bytes());
             addr_value.extend(&self.value.to_ne_bytes());
-            ldb_try!(db.put(&addr_key, &addr_value));
+            ldb_try!(db.write().put(&addr_key, &addr_value));
         }
         Ok(())
     }
@@ -161,13 +162,13 @@ impl<'a> UTXO<'a> {
 }
 
 impl UTXOID {
-    pub fn rem(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
+    pub fn rem(self, db: &RwLock<DB>, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         let mut utxoid_key = Vec::with_capacity(37);
         utxoid_key.push(4_u8);
         utxoid_key.extend(&self.txid);
-        let raw = ldb_try!(db.get(&utxoid_key));
+        let raw = ldb_try!(db.read().get(&utxoid_key));
         utxoid_key[0] = 5;
-        let unspents = ldb_try!(db.get(&utxoid_key))
+        let unspents = ldb_try!(db.read().get(&utxoid_key))
             .map(|c| {
                 let mut buf = [0_u8; 4];
                 buf.copy_from_slice(&c);
@@ -176,16 +177,16 @@ impl UTXOID {
             .unwrap_or(0)
             - 1;
         if unspents == 0 {
-            ldb_try!(db.delete(&utxoid_key));
+            ldb_try!(db.write().delete(&utxoid_key));
         }
-        ldb_try!(db.put(&utxoid_key, &unspents.to_ne_bytes()));
+        ldb_try!(db.write().put(&utxoid_key, &unspents.to_ne_bytes()));
         utxoid_key[0] = 2;
         utxoid_key.extend(&self.vout.to_ne_bytes());
-        let addr_key = match ldb_try!(db.get(&utxoid_key)) {
+        let addr_key = match ldb_try!(db.read().get(&utxoid_key)) {
             Some(a) => a,
             None => return Ok(()),
         };
-        let len = ldb_try!(db.get(&addr_key[0..22])).ok_or(format_err!("missing addr length"))?;
+        let len = ldb_try!(db.read().get(&addr_key[0..22])).ok_or(format_err!("missing addr length"))?;
         let mut buf = [0_u8; 4];
         if len.len() == 4 {
             buf.clone_from_slice(&len);
@@ -197,7 +198,7 @@ impl UTXOID {
         replacement_addr_key.extend(&addr_key[0..22]);
         replacement_addr_key.extend(&replacement_idx.to_ne_bytes());
 
-        let kv = match ldb_try!(db.get(&addr_key)) {
+        let kv = match ldb_try!(db.read().get(&addr_key)) {
             Some(addr_val) => {
                 let a = UTXO::from_kv(&addr_key, &addr_val)?;
                 (a.0, Some(a.1))
@@ -206,20 +207,20 @@ impl UTXOID {
         };
         rewind[idx as usize % crate::CONFIRMATIONS].insert(kv.0, (kv.1, raw));
         if &replacement_idx.to_ne_bytes() != &addr_key[22..] {
-            let replacement_addr_value = ldb_try!(db.get(&replacement_addr_key));
+            let replacement_addr_value = ldb_try!(db.read().get(&replacement_addr_key));
             if let Some(replacement_addr_value) = replacement_addr_value {
                 let update_index = UTXO::from_kv(&replacement_addr_key, &replacement_addr_value)?;
                 let mut replacement_utxoid_key = Vec::with_capacity(37);
                 replacement_utxoid_key.push(2_u8);
                 replacement_utxoid_key.extend(&update_index.0.txid);
                 replacement_utxoid_key.extend(&update_index.0.vout.to_ne_bytes());
-                ldb_try!(db.put(&replacement_utxoid_key, &addr_key));
-                ldb_try!(db.put(&addr_key, &replacement_addr_value));
+                ldb_try!(db.write().put(&replacement_utxoid_key, &addr_key));
+                ldb_try!(db.write().put(&addr_key, &replacement_addr_value));
             }
         }
-        ldb_try!(db.delete(&replacement_addr_key));
-        ldb_try!(db.delete(&utxoid_key));
-        ldb_try!(db.put(&addr_key[0..22], &replacement_idx.to_ne_bytes()));
+        ldb_try!(db.write().delete(&replacement_addr_key));
+        ldb_try!(db.write().delete(&utxoid_key));
+        ldb_try!(db.write().put(&addr_key[0..22], &replacement_idx.to_ne_bytes()));
 
         Ok(())
     }

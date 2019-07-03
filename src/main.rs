@@ -178,7 +178,7 @@ fn main() -> Result<(), Error> {
                         .take(CONFIRMATIONS)
                         .collect()
                 });
-            match try_process_block(&client, &recv, &mut db.write(), &mut rewind) {
+            match try_process_block(&client, &recv, &db, &mut rewind) {
                 Ok(Some(i)) => {
                     println!("scanned {}", i);
                     if i % 100 == 0 {
@@ -316,22 +316,22 @@ fn main() -> Result<(), Error> {
                 }
                 Some(path_and_query) => Either::A(match req.headers().get("Content-Type") {
                     Some(a) if a.as_bytes().starts_with(b"application/json") => result(
-                        api::handle_request(&db.read(), path_and_query)
+                        api::handle_request(&db, path_and_query)
                             .and_then(|res| res.to_json())
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/cbor") => result(
-                        api::handle_request(&db.read(), path_and_query)
+                        api::handle_request(&db, path_and_query)
                             .and_then(|res| serde_cbor::to_vec(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/x-yaml") => result(
-                        api::handle_request(&db.read(), path_and_query)
+                        api::handle_request(&db, path_and_query)
                             .and_then(|res| serde_yaml::to_string(&res).map_err(Error::from))
                             .map(|res| Response::new(Body::from(res))),
                     ),
                     Some(a) if a.as_bytes().starts_with(b"application/octet-stream") => result(
-                        api::handle_request(&db.read(), path_and_query)
+                        api::handle_request(&db, path_and_query)
                             .map(|res| res.to_bytes())
                             .map(|res| Response::new(Body::from(res))),
                     ),
@@ -365,7 +365,7 @@ fn main() -> Result<(), Error> {
 fn try_process_block(
     client: &BitcoinRpcClient,
     recv: &crossbeam_channel::Receiver<(u32, Vec<u8>, Vec<u8>)>,
-    db: &mut DB,
+    db: &RwLock<DB>,
     rewind: &mut Rewind,
 ) -> Result<Option<u32>, Error> {
     let (idx, bhash, block_raw) = match recv.try_recv() {
@@ -376,7 +376,7 @@ fn try_process_block(
     let mut bkey = Vec::with_capacity(9);
     bkey.push(3_u8);
     bkey.extend(&idx.to_ne_bytes());
-    ldb_try!(db.put(&bkey, &bhash));
+    ldb_try!(db.write().put(&bkey, &bhash));
     let block = Block::from_slice(&block_raw)?;
     handle_rewind(
         client,
@@ -386,14 +386,14 @@ fn try_process_block(
         rewind,
     )?;
     block.exec(db, idx, rewind)?;
-    ldb_try!(db.put(&[0_u8], &(idx + 1).to_ne_bytes()));
+    ldb_try!(db.write().put(&[0_u8], &(idx + 1).to_ne_bytes()));
 
     Ok(Some(idx))
 }
 
 fn handle_rewind(
     client: &BitcoinRpcClient,
-    db: &mut DB,
+    db: &RwLock<DB>,
     hash: &[u8],
     idx: u32,
     rewind: &mut Rewind,
@@ -408,7 +408,7 @@ fn handle_rewind(
     let mut block_key = Vec::with_capacity(5);
     block_key.push(3_u8);
     block_key.extend(&idx.to_ne_bytes());
-    let old_hash = ldb_try!(db.get(&block_key)).ok_or(format_err!("missing block_hash"))?;
+    let old_hash = ldb_try!(db.read().get(&block_key)).ok_or(format_err!("missing block_hash"))?;
     if old_hash.as_slice() == AsRef::<[u8]>::as_ref(hash) {
         return Ok(());
     }
@@ -432,7 +432,7 @@ fn handle_rewind(
         rewind,
     )?;
     block.exec(db, idx, rewind)?;
-    ldb_try!(db.put(&block_key, hash));
+    ldb_try!(db.write().put(&block_key, hash));
 
     Ok(())
 }

@@ -4,6 +4,7 @@ use crate::Rewind;
 use bitcoin::consensus::Decodable;
 use failure::Error;
 use leveldb_rs::DB;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use throttled_bitcoin_rpc::BitcoinRpcClient;
 
@@ -35,7 +36,7 @@ impl<'a> Block<'a> {
         })
     }
 
-    pub fn exec(self, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
+    pub fn exec(self, db: &RwLock<DB>, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
         use bitcoin::consensus::encode::Encodable;
         rewind[idx as usize % crate::CONFIRMATIONS] = HashMap::new();
         for tx in self {
@@ -53,9 +54,9 @@ impl<'a> Block<'a> {
             let mut tx_key = Vec::with_capacity(37);
             tx_key.push(5_u8);
             tx_key.extend(&txid);
-            ldb_try!(db.put(&tx_key, &(tx.output.len() as u32).to_ne_bytes()));
+            ldb_try!(db.write().put(&tx_key, &(tx.output.len() as u32).to_ne_bytes()));
             tx_key[0] = 4;
-            ldb_try!(db.put(&tx_key, &tx_vec));
+            ldb_try!(db.write().put(&tx_key, &tx_vec));
             for (i, o) in tx.output.into_iter().enumerate() {
                 UTXO::from_txout(&txid, &o, i as u32).add(db, None)?;
             }
@@ -64,13 +65,24 @@ impl<'a> Block<'a> {
         Ok(())
     }
 
-    pub fn undo(self, client: &BitcoinRpcClient, db: &mut DB, idx: u32, rewind: &mut Rewind) -> Result<(), Error> {
+    pub fn undo(
+        self,
+        client: &BitcoinRpcClient,
+        db: &RwLock<DB>,
+        idx: u32,
+        rewind: &mut Rewind,
+    ) -> Result<(), Error> {
         for (id, (data, raw)) in rewind[idx as usize % crate::CONFIRMATIONS].iter() {
             let raw = match raw {
                 Some(raw) => std::borrow::Cow::Borrowed(raw),
-                None => std::borrow::Cow::Owned(hex::decode(client.getrawtransaction(&hex::encode(&id.txid), 0)?.Zero()?)?),
+                None => std::borrow::Cow::Owned(hex::decode(
+                    client
+                        .getrawtransaction(&hex::encode(&id.txid), 0)?
+                        .Zero()?,
+                )?),
             };
-            let tx: bitcoin::Transaction = Decodable::consensus_decode(&mut std::io::Cursor::new(raw.as_slice()))?;
+            let tx: bitcoin::Transaction =
+                Decodable::consensus_decode(&mut std::io::Cursor::new(raw.as_slice()))?;
             let utxo = match data {
                 Some(data) => UTXO::from((id, data.clone())),
                 None => UTXO::from_txout(&id.txid, &tx.output[id.vout as usize], id.vout),

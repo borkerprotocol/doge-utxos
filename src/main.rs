@@ -72,7 +72,7 @@ fn main() -> Result<(), Error> {
     let db_arc = Arc::new(RwLock::new(ldb_try!(
         DB::open_with_opts(path, options)
     )));
-    let (send, recv) = crossbeam_channel::bounded(100);
+    let (send, recv) = crossbeam_channel::bounded(50);
     let db = db_arc.clone();
     let client = client_arc.clone();
     let b = std::thread::spawn(move || {

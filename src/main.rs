@@ -65,8 +65,11 @@ fn main() -> Result<(), Error> {
         0,
     );
     let path = std::path::Path::new("utxos.db");
+    let options = DBOptions::new().unwrap();
+    options.set_create_if_missing(true);
+    options.set_max_open_files(500);
     let db_arc = Arc::new(RwLock::new(ldb_try!(
-        DB::open(path).or_else(|_| DB::create(path))
+        DB::open_with_opts(path, options)
     )));
     let (send, recv) = crossbeam_channel::bounded(100);
     let db = db_arc.clone();

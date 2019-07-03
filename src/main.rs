@@ -66,7 +66,7 @@ fn main() -> Result<(), Error> {
         0,
     );
     let path = std::path::Path::new("utxos.db");
-    let options = DBOptions::new().unwrap();
+    let mut options = DBOptions::new().unwrap();
     options.set_create_if_missing(true);
     options.set_max_open_files(500);
     let db_arc = Arc::new(RwLock::new(ldb_try!(

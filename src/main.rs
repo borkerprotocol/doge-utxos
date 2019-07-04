@@ -135,7 +135,9 @@ fn main() -> Result<(), Error> {
                     continue 'main;
                 }
             };
-            println!("fetched in {:?}", time.elapsed());
+            if idx <= count {
+                println!("fetched in {:?}", time.elapsed());
+            }
             for ((i, hash), block) in idxs
                 .into_iter()
                 .zip(hashes.into_iter())
@@ -164,6 +166,9 @@ fn main() -> Result<(), Error> {
                     }
                 };
                 idx = i + 1;
+            }
+            if idx > count {
+                std::thread::sleep(std::time::Duration::from_secs(1));
             }
         }
     });
